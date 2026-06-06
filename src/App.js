@@ -5,6 +5,8 @@ import Register from './pages/Register';
 import Home from './pages/Home';
 import AIChat from './pages/AIChat';
 import Feed from './pages/Feed';
+import ChatList from './pages/ChatList';
+import ChatRoom from './pages/ChatRoom';
 
 function App() {
   return (
@@ -16,6 +18,8 @@ function App() {
         <Route path="/home" element={<Home />} />
         <Route path="/ai-chat" element={<AIChat />} />
         <Route path="/feed" element={<Feed />} />
+        <Route path="/chat" element={<ChatList />} />
+        <Route path="/chat/:id" element={<ChatRoom />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
