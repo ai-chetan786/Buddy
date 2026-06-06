@@ -80,13 +80,13 @@ export default function Home() {
           <div className="feature-arrow">→</div>
         </div>
 
-        <div className="feature-card chat-card coming">
+        <div className="feature-card chat-card" onClick={() => navigate('/chat')}>
           <div className="feature-icon">💬</div>
           <div className="feature-info">
             <h3>Friends Chat</h3>
-            <p>Coming soon...</p>
+            <p>Message your friends</p>
           </div>
-          <div className="coming-badge">Soon</div>
+          <div className="feature-arrow">→</div>
         </div>
 
         <div className="feature-card image-card coming">
