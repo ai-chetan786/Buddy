@@ -6,15 +6,33 @@ import './Home.css';
 export default function Home() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) {
+    // Check login status
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
         navigate('/login');
       } else {
-        setUser(data.user);
+        setUser(session.user);
+        setLoading(false);
       }
     });
+
+    // Listen for logout
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === 'SIGNED_OUT') {
+          navigate('/login');
+        }
+        if (event === 'SIGNED_IN' && session) {
+          setUser(session.user);
+          setLoading(false);
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
   const handleLogout = async () => {
@@ -22,7 +40,17 @@ export default function Home() {
     navigate('/login');
   };
 
+  if (loading) {
+    return (
+      <div className="home-loading">
+        <div className="loading-logo">🤖</div>
+        <p>Loading Buddy...</p>
+      </div>
+    );
+  }
+
   const firstName = user?.user_metadata?.full_name?.split(' ')[0]
+    || user?.user_metadata?.name?.split(' ')[0]
     || user?.email?.split('@')[0]
     || 'Friend';
 
