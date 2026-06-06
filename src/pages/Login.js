@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import './Auth.css';
@@ -10,6 +10,24 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPass, setShowPass] = useState(false);
+
+  useEffect(() => {
+    // Check if user is already logged in
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) navigate('/home');
+    });
+
+    // Listen for auth changes (catches Google OAuth redirect)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          navigate('/home');
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -28,7 +46,9 @@ export default function Login() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin + '/home' }
+      options: {
+        redirectTo: 'https://buddycom.vercel.app/home'
+      }
     });
     if (error) setError(error.message);
     setLoading(false);
@@ -36,14 +56,12 @@ export default function Login() {
 
   return (
     <div className="auth-bg">
-      {/* Floating bubbles background */}
       <div className="bubble bubble-1"></div>
       <div className="bubble bubble-2"></div>
       <div className="bubble bubble-3"></div>
       <div className="bubble bubble-4"></div>
 
       <div className="auth-card">
-        {/* Logo */}
         <div className="auth-logo">
           <div className="logo-circle">
             <span className="logo-robot">🤖</span>
