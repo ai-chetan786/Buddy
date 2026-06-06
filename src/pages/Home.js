@@ -9,28 +9,19 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check login status
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate('/login');
-      } else {
+      if (!session) { navigate('/login'); return; }
+      setUser(session.user);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') navigate('/login');
+      if (event === 'SIGNED_IN' && session) {
         setUser(session.user);
         setLoading(false);
       }
     });
-
-    // Listen for logout
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (event === 'SIGNED_OUT') {
-          navigate('/login');
-        }
-        if (event === 'SIGNED_IN' && session) {
-          setUser(session.user);
-          setLoading(false);
-        }
-      }
-    );
 
     return () => subscription.unsubscribe();
   }, [navigate]);
@@ -56,7 +47,6 @@ export default function Home() {
 
   return (
     <div className="home-bg">
-      {/* Header */}
       <div className="home-header">
         <div className="home-header-left">
           <div className="home-logo-small">🤖</div>
@@ -65,31 +55,29 @@ export default function Home() {
         <button className="logout-btn" onClick={handleLogout}>🚪 Logout</button>
       </div>
 
-      {/* Welcome */}
       <div className="welcome-section">
         <div className="welcome-emoji">👋</div>
         <h1 className="welcome-title">Hey, {firstName}!</h1>
         <p className="welcome-sub">What would you like to do today?</p>
       </div>
 
-      {/* Feature Cards */}
       <div className="features-grid">
         <div className="feature-card ai-card" onClick={() => navigate('/ai-chat')}>
           <div className="feature-icon">🤖</div>
           <div className="feature-info">
             <h3>Buddy AI Chat</h3>
-            <p>Chat with your smart AI companion</p>
+            <p>Chat with your smart AI</p>
           </div>
           <div className="feature-arrow">→</div>
         </div>
 
-        <div className="feature-card feed-card coming">
+        <div className="feature-card feed-card" onClick={() => navigate('/feed')}>
           <div className="feature-icon">📱</div>
           <div className="feature-info">
             <h3>Social Feed</h3>
-            <p>Coming soon...</p>
+            <p>Share posts with everyone</p>
           </div>
-          <div className="coming-badge">Soon</div>
+          <div className="feature-arrow">→</div>
         </div>
 
         <div className="feature-card chat-card coming">
@@ -129,7 +117,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Bottom user info */}
       <div className="home-footer">
         <p>Logged in as <strong>{user?.email}</strong></p>
       </div>
