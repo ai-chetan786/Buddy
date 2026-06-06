@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Home from './pages/Home';
 import AIChat from './pages/AIChat';
+import Feed from './pages/Feed';
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/home" element={<Home />} />
         <Route path="/ai-chat" element={<AIChat />} />
+        <Route path="/feed" element={<Feed />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
