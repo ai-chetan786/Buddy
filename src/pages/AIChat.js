@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import './AIChat.css';
 
-const GROQ_API_KEY = process.env.REACT_APP_GROQ_API_KEY;
+const OPENROUTER_KEY = process.env.REACT_APP_OPENROUTER_KEY;
 
 const QUICK_PROMPTS = [
   { icon: '💡', text: 'Give me a creative idea' },
   { icon: '📝', text: 'Help me write something' },
-  { icon: '🧠', text: 'Explain a concept' },
-  { icon: '😂', text: 'Tell me a joke' },
+  { icon: '🧠', text: 'Explain a concept simply' },
+  { icon: '😂', text: 'Tell me a funny joke' },
 ];
 
 export default function AIChat() {
@@ -28,9 +28,9 @@ export default function AIChat() {
   const inputRef = useRef(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) navigate('/login');
-      else setUser(data.user);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) navigate('/login');
+      else setUser(session.user);
     });
   }, [navigate]);
 
@@ -53,20 +53,22 @@ export default function AIChat() {
     setLoading(true);
 
     try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${GROQ_API_KEY}`
+          'Authorization': `Bearer ${OPENROUTER_KEY}`,
+          'HTTP-Referer': 'https://buddycom.vercel.app',
+          'X-Title': 'Buddy AI App'
         },
         body: JSON.stringify({
-          model: 'llama3-8b-8192',
+          model: 'meta-llama/llama-3.1-8b-instruct:free',
           messages: [
             {
               role: 'system',
-              content: `You are Buddy AI, a friendly, helpful, and fun AI assistant. 
-              You are part of the Buddy social app. Be conversational, warm, and helpful.
-              Keep responses concise but complete. Use emojis occasionally to be friendly.`
+              content: `You are Buddy AI, a friendly, helpful, and fun AI assistant built into the Buddy social app. 
+              Be conversational, warm, and genuinely helpful. Keep responses concise but complete. 
+              Use emojis occasionally. You are talking to an Indian user so be culturally aware.`
             },
             ...messages.map(m => ({ role: m.role, content: m.content })),
             { role: 'user', content: userText }
@@ -77,7 +79,13 @@ export default function AIChat() {
       });
 
       const data = await response.json();
-      const reply = data.choices?.[0]?.message?.content || "Sorry, I couldn't get a response. Try again! 😅";
+
+      if (data.error) {
+        throw new Error(data.error.message || 'API Error');
+      }
+
+      const reply = data.choices?.[0]?.message?.content
+        || "I'm having trouble thinking right now. Try again! 😅";
 
       const aiMsg = {
         role: 'assistant',
@@ -93,13 +101,14 @@ export default function AIChat() {
           user_id: user.id,
           message: userText,
           reply: reply
-        });
+        }).catch(() => {}); // Don't fail if save fails
       }
 
     } catch (err) {
+      console.error('AI Error:', err);
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: "Oops! Something went wrong. Check your internet and try again! 🔧",
+        content: "Oops! Connection issue. Please check your internet and try again! 🔧",
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }]);
     }
@@ -142,7 +151,6 @@ export default function AIChat() {
 
       {/* Messages */}
       <div className="chat-messages">
-        {/* Quick prompts - show only at start */}
         {messages.length === 1 && (
           <div className="quick-prompts">
             <p className="quick-title">Try asking:</p>
@@ -158,9 +166,7 @@ export default function AIChat() {
 
         {messages.map((msg, i) => (
           <div key={i} className={`message-row ${msg.role === 'user' ? 'user-row' : 'ai-row'}`}>
-            {msg.role === 'assistant' && (
-              <div className="msg-avatar">🤖</div>
-            )}
+            {msg.role === 'assistant' && <div className="msg-avatar">🤖</div>}
             <div className={`message-bubble ${msg.role === 'user' ? 'user-bubble' : 'ai-bubble'}`}>
               <p className="msg-text">{msg.content}</p>
               <span className="msg-time">{msg.time}</span>
@@ -173,7 +179,6 @@ export default function AIChat() {
           </div>
         ))}
 
-        {/* Loading dots */}
         {loading && (
           <div className="message-row ai-row">
             <div className="msg-avatar">🤖</div>
@@ -184,11 +189,10 @@ export default function AIChat() {
             </div>
           </div>
         )}
-
         <div ref={bottomRef} />
       </div>
 
-      {/* Input Box */}
+      {/* Input */}
       <div className="chat-input-area">
         <div className="input-box">
           <textarea
