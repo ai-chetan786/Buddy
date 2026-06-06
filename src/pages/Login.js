@@ -12,12 +12,12 @@ export default function Login() {
   const [showPass, setShowPass] = useState(false);
 
   useEffect(() => {
-    // Check if user is already logged in
+    // If already logged in, go to home
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) navigate('/home');
     });
 
-    // Listen for auth changes (catches Google OAuth redirect)
+    // This catches Google login redirect automatically
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (event === 'SIGNED_IN' && session) {
