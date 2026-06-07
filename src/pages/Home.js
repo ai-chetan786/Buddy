@@ -59,7 +59,6 @@ export default function Home() {
 
   return (
     <div className="home-bg">
-      {/* Header */}
       <div className="home-header">
         <div className="home-header-left">
           <div className="home-logo-small">🤖</div>
@@ -79,14 +78,12 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Welcome */}
       <div className="welcome-section">
         <div className="welcome-emoji">👋</div>
         <h1 className="welcome-title">Hey, {firstName}!</h1>
         <p className="welcome-sub">What would you like to do today?</p>
       </div>
 
-      {/* Feature Cards */}
       <div className="features-grid">
         <div className="feature-card ai-card" onClick={() => navigate('/ai-chat')}>
           <div className="feature-icon">🤖</div>
@@ -124,13 +121,13 @@ export default function Home() {
           <div className="feature-arrow">→</div>
         </div>
 
-        <div className="feature-card image-card coming">
+        <div className="feature-card image-card" onClick={() => navigate('/image-creator')}>
           <div className="feature-icon">🎨</div>
           <div className="feature-info">
             <h3>AI Image Creator</h3>
-            <p>Coming soon...</p>
+            <p>Generate amazing images</p>
           </div>
-          <div className="coming-badge">Soon</div>
+          <div className="feature-arrow">→</div>
         </div>
 
         <div className="feature-card news-card coming">
