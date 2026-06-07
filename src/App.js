@@ -8,6 +8,7 @@ import Feed from './pages/Feed';
 import ChatList from './pages/ChatList';
 import ChatRoom from './pages/ChatRoom';
 import Profile from './pages/Profile';
+import ImageCreator from './pages/ImageCreator';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
         <Route path="/chat" element={<ChatList />} />
         <Route path="/chat/:id" element={<ChatRoom />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/image-creator" element={<ImageCreator />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
