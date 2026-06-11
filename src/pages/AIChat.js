@@ -3,9 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import './AIChat.css';
 
-const OPENROUTER_KEY = process.env.REACT_APP_OPENROUTER_KEY;
-const GROQ_KEY = process.env.REACT_APP_GROQ_API_KEY;
-
 const QUICK_PROMPTS = [
   { icon: '💡', text: 'Give me a creative idea' },
   { icon: '📝', text: 'Help me write something' },
@@ -13,61 +10,11 @@ const QUICK_PROMPTS = [
   { icon: '😂', text: 'Tell me a funny joke' },
 ];
 
-const SYSTEM_PROMPT = `You are Buddy AI, a friendly, helpful, and fun AI assistant built into the Buddy social app. 
-Be conversational, warm, and genuinely helpful. Keep responses concise but complete. 
-Use emojis occasionally. You are talking to an Indian user so be culturally aware.`;
-
-async function callGroq(messages, userText) {
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'llama3-8b-8192',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        ...messages.map(m => ({ role: m.role, content: m.content })),
-        { role: 'user', content: userText }
-      ],
-      max_tokens: 1024
-    })
-  });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  return data.choices[0].message.content;
-}
-
-async function callOpenRouter(messages, userText) {
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENROUTER_KEY}`,
-      'HTTP-Referer': 'https://buddycom.vercel.app',
-      'X-Title': 'Buddy AI'
-    },
-    body: JSON.stringify({
-      model: 'mistralai/mistral-7b-instruct:free',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        ...messages.map(m => ({ role: m.role, content: m.content })),
-        { role: 'user', content: userText }
-      ],
-      max_tokens: 1024
-    })
-  });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  return data.choices[0].message.content;
-}
-
 export default function AIChat() {
   const navigate = useNavigate();
   const [messages, setMessages] = useState([{
     role: 'assistant',
-    content: "Hey! I'm Buddy AI 🤖 Your smart companion! Ask me anything — I'm here to help, chat, and make your day better! 😊",
+    content: "Hey! I'm Buddy AI 🤖 Your smart companion! Ask me anything!",
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }]);
   const [input, setInput] = useState('');
@@ -103,32 +50,80 @@ export default function AIChat() {
 
     let reply = null;
 
-    // Try Groq first, then OpenRouter as fallback
+    // Try OpenRouter first
     try {
-      reply = await callGroq(messages, userText);
-    } catch (e1) {
-      console.log('Groq failed, trying OpenRouter...', e1.message);
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.REACT_APP_OPENROUTER_KEY}`,
+          'HTTP-Referer': 'https://buddycom.vercel.app',
+          'X-Title': 'Buddy AI'
+        },
+        body: JSON.stringify({
+          model: 'google/gemma-3-4b-it:free',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are Buddy AI, a friendly helpful assistant. Be warm, concise, use emojis occasionally.'
+            },
+            ...messages.map(m => ({ role: m.role, content: m.content })),
+            { role: 'user', content: userText }
+          ],
+          max_tokens: 800
+        })
+      });
+
+      const data = await res.json();
+      if (data.choices?.[0]?.message?.content) {
+        reply = data.choices[0].message.content;
+      }
+    } catch (e) {
+      console.log('OpenRouter failed:', e);
+    }
+
+    // Try Groq as fallback
+    if (!reply) {
       try {
-        reply = await callOpenRouter(messages, userText);
-      } catch (e2) {
-        console.log('OpenRouter also failed:', e2.message);
-        reply = null;
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.REACT_APP_GROQ_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: 'llama3-8b-8192',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are Buddy AI, a friendly helpful assistant. Be warm, concise, use emojis occasionally.'
+              },
+              ...messages.map(m => ({ role: m.role, content: m.content })),
+              { role: 'user', content: userText }
+            ],
+            max_tokens: 800
+          })
+        });
+        const data = await res.json();
+        if (data.choices?.[0]?.message?.content) {
+          reply = data.choices[0].message.content;
+        }
+      } catch (e) {
+        console.log('Groq failed:', e);
       }
     }
 
-    const aiMsg = {
+    setMessages(prev => [...prev, {
       role: 'assistant',
-      content: reply || "I'm having a small break! 😅 Please try again in a moment.",
+      content: reply || "Sorry, I'm having trouble connecting. Please check your API keys in Vercel! 🔧",
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-
-    setMessages(prev => [...prev, aiMsg]);
+    }]);
 
     if (user && reply) {
       await supabase.from('ai_chats').insert({
         user_id: user.id,
         message: userText,
-        reply: reply
+        reply
       }).catch(() => {});
     }
 
@@ -143,14 +138,6 @@ export default function AIChat() {
     }
   };
 
-  const clearChat = () => {
-    setMessages([{
-      role: 'assistant',
-      content: "Chat cleared! Fresh start 🌟 What's on your mind?",
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    }]);
-  };
-
   return (
     <div className="chat-container">
       <div className="chat-header">
@@ -162,7 +149,11 @@ export default function AIChat() {
             <div className="ai-status"><span className="status-dot"></span> Always online</div>
           </div>
         </div>
-        <button className="clear-btn" onClick={clearChat}>🗑️</button>
+        <button className="clear-btn" onClick={() => setMessages([{
+          role: 'assistant',
+          content: "Fresh start! 🌟 What's on your mind?",
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }])}>🗑️</button>
       </div>
 
       <div className="chat-messages">
@@ -172,7 +163,7 @@ export default function AIChat() {
             <div className="quick-grid">
               {QUICK_PROMPTS.map((q, i) => (
                 <button key={i} className="quick-btn" onClick={() => sendMessage(q.text)}>
-                  <span>{q.icon}</span> {q.text}
+                  {q.icon} {q.text}
                 </button>
               ))}
             </div>
@@ -214,7 +205,7 @@ export default function AIChat() {
             className="chat-input"
             placeholder="Message Buddy AI..."
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
             disabled={loading}
