@@ -14,7 +14,7 @@ export default function AIChat() {
   const navigate = useNavigate();
   const [messages, setMessages] = useState([{
     role: 'assistant',
-    content: "Hey! I'm Buddy AI 🤖 Your smart companion! Ask me anything!",
+    content: "Hey! I'm Buddy AI 🤖 Your smart companion! Ask me anything — I'm here to help, chat, and make your day better! 😊",
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }]);
   const [input, setInput] = useState('');
@@ -50,72 +50,32 @@ export default function AIChat() {
 
     let reply = null;
 
-    // Try OpenRouter first
     try {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      // Call our Vercel serverless function (no CORS issues!)
+      const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.REACT_APP_OPENROUTER_KEY}`,
-          'HTTP-Referer': 'https://buddycom.vercel.app',
-          'X-Title': 'Buddy AI'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'deepseek/deepseek-r1-0528:free',
           messages: [
-            {
-              role: 'system',
-              content: 'You are Buddy AI, a friendly helpful assistant. Be warm, concise, use emojis occasionally.'
-            },
             ...messages.map(m => ({ role: m.role, content: m.content })),
             { role: 'user', content: userText }
-          ],
-          max_tokens: 800
+          ]
         })
       });
 
       const data = await res.json();
-      if (data.choices?.[0]?.message?.content) {
-        reply = data.choices[0].message.content;
+      if (data.reply) {
+        reply = data.reply;
+      } else if (data.error) {
+        console.error('API error:', data.error);
       }
-    } catch (e) {
-      console.log('OpenRouter failed:', e);
-    }
-
-    // Try Groq as fallback
-    if (!reply) {
-      try {
-        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.REACT_APP_GROQ_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: 'llama3-8b-8192',
-            messages: [
-              {
-                role: 'system',
-                content: 'You are Buddy AI, a friendly helpful assistant. Be warm, concise, use emojis occasionally.'
-              },
-              ...messages.map(m => ({ role: m.role, content: m.content })),
-              { role: 'user', content: userText }
-            ],
-            max_tokens: 800
-          })
-        });
-        const data = await res.json();
-        if (data.choices?.[0]?.message?.content) {
-          reply = data.choices[0].message.content;
-        }
-      } catch (e) {
-        console.log('Groq failed:', e);
-      }
+    } catch (err) {
+      console.error('Fetch error:', err);
     }
 
     setMessages(prev => [...prev, {
       role: 'assistant',
-      content: reply || "Sorry, I'm having trouble connecting. Please check your API keys in Vercel! 🔧",
+      content: reply || "Sorry yaar! Something went wrong. Please try again! 😅",
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }]);
 
@@ -138,6 +98,14 @@ export default function AIChat() {
     }
   };
 
+  const clearChat = () => {
+    setMessages([{
+      role: 'assistant',
+      content: "Chat cleared! Fresh start 🌟 What's on your mind?",
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }]);
+  };
+
   return (
     <div className="chat-container">
       <div className="chat-header">
@@ -146,14 +114,12 @@ export default function AIChat() {
           <div className="ai-avatar">🤖</div>
           <div>
             <div className="ai-name">Buddy AI</div>
-            <div className="ai-status"><span className="status-dot"></span> Always online</div>
+            <div className="ai-status">
+              <span className="status-dot"></span> Always online
+            </div>
           </div>
         </div>
-        <button className="clear-btn" onClick={() => setMessages([{
-          role: 'assistant',
-          content: "Fresh start! 🌟 What's on your mind?",
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }])}>🗑️</button>
+        <button className="clear-btn" onClick={clearChat}>🗑️</button>
       </div>
 
       <div className="chat-messages">
