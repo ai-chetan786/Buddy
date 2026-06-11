@@ -130,13 +130,13 @@ export default function Home() {
           <div className="feature-arrow">→</div>
         </div>
 
-        <div className="feature-card news-card coming">
+        <div className="feature-card news-card" onClick={() => navigate('/news')}>
           <div className="feature-icon">📰</div>
           <div className="feature-info">
             <h3>News Feed</h3>
-            <p>Coming soon...</p>
+            <p>Latest news & updates</p>
           </div>
-          <div className="coming-badge">Soon</div>
+          <div className="feature-arrow">→</div>
         </div>
       </div>
 
