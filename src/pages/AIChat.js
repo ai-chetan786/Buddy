@@ -61,7 +61,7 @@ export default function AIChat() {
           'X-Title': 'Buddy AI'
         },
         body: JSON.stringify({
-          model: 'google/gemma-3-4b-it:free',
+          model: 'deepseek/deepseek-r1-0528:free',
           messages: [
             {
               role: 'system',
