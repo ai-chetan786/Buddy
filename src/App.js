@@ -9,6 +9,7 @@ import ChatList from './pages/ChatList';
 import ChatRoom from './pages/ChatRoom';
 import Profile from './pages/Profile';
 import ImageCreator from './pages/ImageCreator';
+import News from './pages/News';
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
         <Route path="/chat/:id" element={<ChatRoom />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/image-creator" element={<ImageCreator />} />
+        <Route path="/news" element={<News />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
