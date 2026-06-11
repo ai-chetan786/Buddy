@@ -20,4 +20,24 @@ body {
   --buddy-border: rgba(37, 99, 235, 0.15);
   --glass-bg: rgba(255, 255, 255, 0.85);
   --glass-shadow: 0 8px 32px rgba(37, 99, 235, 0.15);
+  --bottom-nav-height: 70px;
 }
+
+/* Add padding to all main pages so content doesn't hide behind bottom nav */
+.home-bg,
+.feed-container,
+.chat-container,
+.chat-list-container,
+.profile-container,
+.image-creator-container,
+.news-container {
+  padding-bottom: var(--bottom-nav-height) !important;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+/* Smooth transitions */
+* { -webkit-tap-highlight-color: transparent; }
