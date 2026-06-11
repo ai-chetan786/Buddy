@@ -1,23 +1,15 @@
-export default async function handler(req, res) {
-  // Allow CORS
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { messages } = req.body;
   const GROQ_KEY = process.env.REACT_APP_GROQ_API_KEY;
 
-  if (!GROQ_KEY) {
-    return res.status(500).json({ error: 'API key not configured' });
-  }
+  if (!GROQ_KEY) return res.status(500).json({ error: 'No API key found' });
 
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -31,7 +23,7 @@ export default async function handler(req, res) {
         messages: [
           {
             role: 'system',
-            content: 'You are Buddy AI, a friendly helpful assistant inside the Buddy social app. Be warm, concise, helpful. Use emojis occasionally. You are talking to Indian users so be culturally aware.'
+            content: 'You are Buddy AI, a friendly helpful assistant. Be warm, concise, helpful. Use emojis occasionally.'
           },
           ...messages
         ],
@@ -41,11 +33,7 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
-
-    if (data.error) {
-      return res.status(400).json({ error: data.error.message });
-    }
-
+    if (data.error) return res.status(400).json({ error: data.error.message });
     const reply = data.choices?.[0]?.message?.content;
     return res.status(200).json({ reply });
 
