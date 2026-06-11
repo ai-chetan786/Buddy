@@ -8,13 +8,34 @@ module.exports = async function handler(req, res) {
 
   const { messages } = req.body;
 
-  // Match EXACTLY what you named in Vercel
-  const GROQ_KEY = process.env.GROQ_API_KEY;
-  const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
+  // Read ALL possible key names
+  const GROQ_KEY = process.env.GROQ_API_KEY 
+    || process.env.REACT_APP_GROQ_API_KEY 
+    || process.env.GROQ_KEY;
 
-  let reply = null;
+  const OR_KEY = process.env.OPENROUTER_API_KEY 
+    || process.env.OPENROUTER_KEY 
+    || process.env.REACT_APP_OPENROUTER_KEY;
 
-  // Try Groq first
+  // Debug info
+  console.log('Keys check - GROQ:', GROQ_KEY ? 'found' : 'missing', '| OR:', OR_KEY ? 'found' : 'missing');
+  console.log('All env keys:', Object.keys(process.env).filter(k => !k.startsWith('npm') && !k.startsWith('NODE')));
+
+  if (!GROQ_KEY && !OR_KEY) {
+    return res.status(500).json({ 
+      error: 'No API keys found in environment!',
+      hint: 'Add GROQ_API_KEY to Vercel environment variables'
+    });
+  }
+
+  const systemMsg = {
+    role: 'system',
+    content: 'You are Buddy AI, a friendly helpful assistant inside Buddy app. Be warm, helpful, concise. Use emojis occasionally.'
+  };
+
+  const allMessages = [systemMsg, ...(messages || [])];
+
+  // Try Groq
   if (GROQ_KEY) {
     try {
       const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -25,51 +46,46 @@ module.exports = async function handler(req, res) {
         },
         body: JSON.stringify({
           model: 'llama3-8b-8192',
-          messages: [
-            { role: 'system', content: 'You are Buddy AI, a friendly helpful assistant. Be warm and concise. Use emojis occasionally.' },
-            ...(messages || [])
-          ],
+          messages: allMessages,
           max_tokens: 800
         })
       });
       const d = await r.json();
+      console.log('Groq status:', r.status, '| error:', d.error?.message || 'none');
       if (d.choices?.[0]?.message?.content) {
-        reply = d.choices[0].message.content;
+        return res.status(200).json({ reply: d.choices[0].message.content });
       }
     } catch (e) {
-      console.log('Groq error:', e.message);
+      console.log('Groq exception:', e.message);
     }
   }
 
-  // Try OpenRouter as fallback
-  if (!reply && OPENROUTER_KEY) {
+  // Try OpenRouter
+  if (OR_KEY) {
     try {
       const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENROUTER_KEY}`,
+          'Authorization': `Bearer ${OR_KEY}`,
           'HTTP-Referer': 'https://buddycom.vercel.app',
           'X-Title': 'Buddy AI'
         },
         body: JSON.stringify({
           model: 'deepseek/deepseek-r1-0528:free',
-          messages: [
-            { role: 'system', content: 'You are Buddy AI, a friendly helpful assistant.' },
-            ...(messages || [])
-          ],
+          messages: allMessages,
           max_tokens: 800
         })
       });
       const d = await r.json();
+      console.log('OR status:', r.status, '| error:', d.error?.message || 'none');
       if (d.choices?.[0]?.message?.content) {
-        reply = d.choices[0].message.content;
+        return res.status(200).json({ reply: d.choices[0].message.content });
       }
     } catch (e) {
-      console.log('OpenRouter error:', e.message);
+      console.log('OR exception:', e.message);
     }
   }
 
-  if (reply) return res.status(200).json({ reply });
-  return res.status(500).json({ error: 'AI service failed. Check API keys!' });
+  return res.status(500).json({ error: 'Both AI services failed' });
 }
