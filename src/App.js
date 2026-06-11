@@ -10,6 +10,7 @@ import ChatRoom from './pages/ChatRoom';
 import Profile from './pages/Profile';
 import ImageCreator from './pages/ImageCreator';
 import News from './pages/News';
+import BottomNav from './components/BottomNav';
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
         <Route path="/news" element={<News />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
+      <BottomNav />
     </Router>
   );
 }
