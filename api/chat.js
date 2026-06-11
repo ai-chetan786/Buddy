@@ -7,9 +7,11 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { messages } = req.body;
-  const GROQ_KEY = process.env.REACT_APP_GROQ_API_KEY;
+  const GROQ_KEY = process.env.GROQ_API_KEY;
 
-  if (!GROQ_KEY) return res.status(500).json({ error: 'No API key found' });
+  if (!GROQ_KEY) {
+    return res.status(500).json({ error: 'No API key' });
+  }
 
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -23,17 +25,20 @@ module.exports = async function handler(req, res) {
         messages: [
           {
             role: 'system',
-            content: 'You are Buddy AI, a friendly helpful assistant. Be warm, concise, helpful. Use emojis occasionally.'
+            content: 'You are Buddy AI, a friendly helpful assistant. Be warm, concise, use emojis.'
           },
-          ...messages
+          ...(messages || [])
         ],
-        max_tokens: 800,
-        temperature: 0.7
+        max_tokens: 800
       })
     });
 
     const data = await response.json();
-    if (data.error) return res.status(400).json({ error: data.error.message });
+
+    if (data.error) {
+      return res.status(400).json({ error: data.error.message });
+    }
+
     const reply = data.choices?.[0]?.message?.content;
     return res.status(200).json({ reply });
 
