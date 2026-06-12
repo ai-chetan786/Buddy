@@ -12,10 +12,13 @@ const QUICK_PROMPTS = [
 
 export default function AIChat() {
   const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+  const [sessions, setSessions] = useState([]);
+  const [activeSession, setActiveSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState(null);
+  const [showSidebar, setShowSidebar] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
@@ -24,7 +27,7 @@ export default function AIChat() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) { navigate('/login'); return; }
       setUser(session.user);
-      loadChatHistory(session.user.id);
+      loadSessions(session.user.id);
     });
   }, [navigate]);
 
@@ -32,15 +35,50 @@ export default function AIChat() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  const loadChatHistory = async (userId) => {
+  const loadSessions = async (userId) => {
     setLoadingHistory(true);
+    try {
+      const { data } = await supabase
+        .from('ai_chats')
+        .select('session_id, message, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (data && data.length > 0) {
+        // Group by session_id
+        const sessionMap = {};
+        data.forEach(chat => {
+          if (!sessionMap[chat.session_id]) {
+            sessionMap[chat.session_id] = {
+              id: chat.session_id,
+              title: chat.message.slice(0, 40) + (chat.message.length > 40 ? '...' : ''),
+              time: chat.created_at
+            };
+          }
+        });
+        const sessionList = Object.values(sessionMap);
+        setSessions(sessionList);
+        // Load most recent session
+        await loadSession(userId, sessionList[0].id);
+      } else {
+        startNewChat();
+      }
+    } catch (e) {
+      console.log('Sessions error:', e);
+      startNewChat();
+    }
+    setLoadingHistory(false);
+  };
+
+  const loadSession = async (userId, sessionId) => {
+    setActiveSession(sessionId);
     try {
       const { data } = await supabase
         .from('ai_chats')
         .select('*')
         .eq('user_id', userId)
-        .order('created_at', { ascending: true })
-        .limit(50);
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: true });
 
       if (data && data.length > 0) {
         const history = [];
@@ -57,34 +95,22 @@ export default function AIChat() {
           });
         });
         setMessages(history);
-      } else {
-        setMessages([{
-          role: 'assistant',
-          content: "Hey! I'm Buddy AI 🤖 Your smart companion! Ask me anything — I'm here to help, chat, and make your day better! 😊",
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }]);
       }
     } catch (e) {
-      console.log('History load error:', e);
-      setMessages([{
-        role: 'assistant',
-        content: "Hey! I'm Buddy AI 🤖 Ask me anything!",
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }]);
+      console.log('Load session error:', e);
     }
-    setLoadingHistory(false);
   };
 
-  const saveChat = async (userId, message, reply) => {
-    try {
-      await supabase.from('ai_chats').insert({
-        user_id: userId,
-        message: message,
-        reply: reply
-      });
-    } catch (e) {
-      console.log('Save error:', e);
-    }
+  const startNewChat = () => {
+    const newSessionId = `session_${Date.now()}`;
+    setActiveSession(newSessionId);
+    setMessages([{
+      role: 'assistant',
+      content: "Hey! I'm Buddy AI 🤖 Your smart companion! Ask me anything — I'm here to help, chat, and make your day better! 😊",
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }]);
+    setShowSidebar(false);
+    inputRef.current?.focus();
   };
 
   const sendMessage = async (text) => {
@@ -106,16 +132,13 @@ export default function AIChat() {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000);
-
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: contextMessages }),
         signal: controller.signal
       });
-
       clearTimeout(timeout);
-
       if (res.ok) {
         const data = await res.json();
         if (data.reply) reply = data.reply;
@@ -133,26 +156,46 @@ export default function AIChat() {
     setMessages(prev => [...prev, aiMsg]);
     setLoading(false);
 
-    if (user && reply) {
-      await saveChat(user.id, userText, reply);
+    // Save to database
+    if (user && reply && activeSession) {
+      try {
+        await supabase.from('ai_chats').insert({
+          user_id: user.id,
+          session_id: activeSession,
+          message: userText,
+          reply: reply
+        });
+
+        // Update sessions list
+        setSessions(prev => {
+          const exists = prev.find(s => s.id === activeSession);
+          if (exists) return prev;
+          return [{
+            id: activeSession,
+            title: userText.slice(0, 40) + (userText.length > 40 ? '...' : ''),
+            time: new Date().toISOString()
+          }, ...prev];
+        });
+      } catch (e) {
+        console.log('Save error:', e.message);
+      }
     }
 
     inputRef.current?.focus();
   };
 
-  const clearChat = async () => {
-    if (!user) return;
-    if (!window.confirm('Clear all chat history?')) return;
+  const deleteSession = async (sessionId, e) => {
+    e.stopPropagation();
     try {
-      await supabase.from('ai_chats').delete().eq('user_id', user.id);
+      await supabase.from('ai_chats')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('session_id', sessionId);
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      if (activeSession === sessionId) startNewChat();
     } catch (e) {
-      console.log('Clear error:', e);
+      console.log('Delete error:', e);
     }
-    setMessages([{
-      role: 'assistant',
-      content: "Chat cleared! Fresh start 🌟 What's on your mind?",
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    }]);
   };
 
   const handleKeyDown = (e) => {
@@ -162,95 +205,142 @@ export default function AIChat() {
     }
   };
 
-  if (loadingHistory) {
-    return (
-      <div className="chat-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ fontSize: '48px' }}>🤖</div>
-        <p style={{ color: '#64748b' }}>Loading your chat history...</p>
-      </div>
-    );
-  }
+  const timeLabel = (dateStr) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = Math.floor((now - date) / 86400000);
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Yesterday';
+    if (diff < 7) return `${diff} days ago`;
+    return date.toLocaleDateString();
+  };
 
   return (
-    <div className="chat-container">
-      <div className="chat-header">
-        <button className="back-btn" onClick={() => navigate('/home')}>←</button>
-        <div className="chat-header-info">
-          <div className="ai-avatar">🤖</div>
-          <div>
-            <div className="ai-name">Buddy AI</div>
-            <div className="ai-status">
-              <span className="status-dot"></span>
-              {loading ? 'Typing...' : 'Always online'}
-            </div>
-          </div>
+    <div className="aichat-wrapper">
+      {/* Sidebar */}
+      <div className={`chat-sidebar ${showSidebar ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <h3>💬 Chats</h3>
+          <button className="close-sidebar" onClick={() => setShowSidebar(false)}>✕</button>
         </div>
-        <button className="clear-btn" onClick={clearChat} title="Clear chat history">🗑️</button>
-      </div>
 
-      <div className="chat-messages">
-        {messages.length <= 1 && !loading && (
-          <div className="quick-prompts">
-            <p className="quick-title">Try asking:</p>
-            <div className="quick-grid">
-              {QUICK_PROMPTS.map((q, i) => (
-                <button key={i} className="quick-btn" onClick={() => sendMessage(q.text)} disabled={loading}>
-                  {q.icon} {q.text}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        <button className="new-chat-btn-sidebar" onClick={startNewChat}>
+          ✏️ New Chat
+        </button>
 
-        {messages.map((msg, i) => (
-          <div key={i} className={`message-row ${msg.role === 'user' ? 'user-row' : 'ai-row'}`}>
-            {msg.role === 'assistant' && <div className="msg-avatar">🤖</div>}
-            <div className={`message-bubble ${msg.role === 'user' ? 'user-bubble' : 'ai-bubble'}`}>
-              <p className="msg-text">{msg.content}</p>
-              <span className="msg-time">{msg.time}</span>
-            </div>
-            {msg.role === 'user' && (
-              <div className="msg-avatar user-av">
-                {user?.email?.[0]?.toUpperCase() || '👤'}
+        <div className="sessions-list">
+          {sessions.length === 0 ? (
+            <p className="no-sessions">No chat history yet</p>
+          ) : (
+            sessions.map(session => (
+              <div
+                key={session.id}
+                className={`session-item ${activeSession === session.id ? 'active' : ''}`}
+                onClick={() => { loadSession(user.id, session.id); setShowSidebar(false); }}
+              >
+                <div className="session-info">
+                  <p className="session-title">{session.title}</p>
+                  <span className="session-time">{timeLabel(session.time)}</span>
+                </div>
+                <button
+                  className="session-delete"
+                  onClick={(e) => deleteSession(session.id, e)}
+                >🗑️</button>
               </div>
-            )}
-          </div>
-        ))}
-
-        {loading && (
-          <div className="message-row ai-row">
-            <div className="msg-avatar">🤖</div>
-            <div className="ai-bubble typing-bubble">
-              <span className="dot"></span>
-              <span className="dot"></span>
-              <span className="dot"></span>
-            </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
+            ))
+          )}
+        </div>
       </div>
 
-      <div className="chat-input-area">
-        <div className="input-box">
-          <textarea
-            ref={inputRef}
-            className="chat-input"
-            placeholder="Message Buddy AI..."
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            disabled={loading}
-          />
-          <button
-            className={`send-btn ${input.trim() && !loading ? 'active' : ''}`}
-            onClick={() => sendMessage()}
-            disabled={!input.trim() || loading}
-          >
-            {loading ? '⏳' : '🚀'}
-          </button>
+      {/* Overlay */}
+      {showSidebar && (
+        <div className="sidebar-overlay" onClick={() => setShowSidebar(false)} />
+      )}
+
+      {/* Main Chat */}
+      <div className="chat-container">
+        <div className="chat-header">
+          <button className="back-btn" onClick={() => setShowSidebar(true)} title="Chat History">☰</button>
+          <div className="chat-header-info">
+            <div className="ai-avatar">🤖</div>
+            <div>
+              <div className="ai-name">Buddy AI</div>
+              <div className="ai-status">
+                <span className="status-dot"></span>
+                {loading ? 'Typing...' : 'Always online'}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="clear-btn" onClick={startNewChat} title="New Chat">✏️</button>
+            <button className="clear-btn" onClick={() => navigate('/home')} title="Home">🏠</button>
+          </div>
         </div>
-        <p className="input-hint">Press Enter to send • Shift+Enter for new line</p>
+
+        <div className="chat-messages">
+          {messages.length <= 1 && !loading && (
+            <div className="quick-prompts">
+              <p className="quick-title">Try asking:</p>
+              <div className="quick-grid">
+                {QUICK_PROMPTS.map((q, i) => (
+                  <button key={i} className="quick-btn" onClick={() => sendMessage(q.text)} disabled={loading}>
+                    {q.icon} {q.text}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {messages.map((msg, i) => (
+            <div key={i} className={`message-row ${msg.role === 'user' ? 'user-row' : 'ai-row'}`}>
+              {msg.role === 'assistant' && <div className="msg-avatar">🤖</div>}
+              <div className={`message-bubble ${msg.role === 'user' ? 'user-bubble' : 'ai-bubble'}`}>
+                <p className="msg-text">{msg.content}</p>
+                <span className="msg-time">{msg.time}</span>
+              </div>
+              {msg.role === 'user' && (
+                <div className="msg-avatar user-av">
+                  {user?.email?.[0]?.toUpperCase() || '👤'}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {loading && (
+            <div className="message-row ai-row">
+              <div className="msg-avatar">🤖</div>
+              <div className="ai-bubble typing-bubble">
+                <span className="dot"></span>
+                <span className="dot"></span>
+                <span className="dot"></span>
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        <div className="chat-input-area">
+          <div className="input-box">
+            <textarea
+              ref={inputRef}
+              className="chat-input"
+              placeholder="Message Buddy AI..."
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={1}
+              disabled={loading}
+            />
+            <button
+              className={`send-btn ${input.trim() && !loading ? 'active' : ''}`}
+              onClick={() => sendMessage()}
+              disabled={!input.trim() || loading}
+            >
+              {loading ? '⏳' : '🚀'}
+            </button>
+          </div>
+          <p className="input-hint">Press Enter to send • Shift+Enter for new line</p>
+        </div>
       </div>
     </div>
   );
