@@ -16,7 +16,7 @@ module.exports = async function handler(req, res) {
   };
   const allMessages = [systemMsg, ...(messages || [])];
 
-  // Try Groq first - completely free, no credits needed
+  // Try Groq with NEW working model
   if (GROQ_KEY) {
     try {
       const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -26,13 +26,13 @@ module.exports = async function handler(req, res) {
           'Authorization': `Bearer ${GROQ_KEY}`
         },
         body: JSON.stringify({
-          model: 'llama3-8b-8192',
+          model: 'llama-3.1-8b-instant',
           messages: allMessages,
           max_tokens: 800
         })
       });
       const d = await r.json();
-      console.log('Groq status:', r.status, 'error:', d.error?.message || 'none');
+      console.log('Groq:', r.status, d.error?.message || 'ok');
       if (d.choices?.[0]?.message?.content) {
         return res.status(200).json({ reply: d.choices[0].message.content });
       }
@@ -41,40 +41,32 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  // Try OpenRouter with WORKING free models
+  // Try OpenRouter with NEW working free model
   if (OR_KEY) {
-    const freeModels = [
-      'meta-llama/llama-3.1-8b-instruct:free',
-      'microsoft/phi-3-mini-128k-instruct:free',
-      'google/gemma-2-9b-it:free'
-    ];
-
-    for (const model of freeModels) {
-      try {
-        const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${OR_KEY}`,
-            'HTTP-Referer': 'https://buddycom.vercel.app',
-            'X-Title': 'Buddy AI'
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: allMessages,
-            max_tokens: 800
-          })
-        });
-        const d = await r.json();
-        console.log('OR model:', model, 'status:', r.status, 'error:', d.error?.message || 'none');
-        if (d.choices?.[0]?.message?.content) {
-          return res.status(200).json({ reply: d.choices[0].message.content });
-        }
-      } catch (e) {
-        console.log('OR model failed:', model, e.message);
+    try {
+      const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OR_KEY}`,
+          'HTTP-Referer': 'https://buddycom.vercel.app',
+          'X-Title': 'Buddy AI'
+        },
+        body: JSON.stringify({
+          model: 'google/gemma-3-4b-it:free',
+          messages: allMessages,
+          max_tokens: 800
+        })
+      });
+      const d = await r.json();
+      console.log('OR:', r.status, d.error?.message || 'ok');
+      if (d.choices?.[0]?.message?.content) {
+        return res.status(200).json({ reply: d.choices[0].message.content });
       }
+    } catch (e) {
+      console.log('OR failed:', e.message);
     }
   }
 
-  return res.status(500).json({ error: 'All AI services failed. Check logs!' });
+  return res.status(500).json({ error: 'All AI services failed' });
 }
