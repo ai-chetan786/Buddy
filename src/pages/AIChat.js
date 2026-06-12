@@ -65,6 +65,7 @@ export default function AIChat() {
         }]);
       }
     } catch (e) {
+      console.log('History load error:', e);
       setMessages([{
         role: 'assistant',
         content: "Hey! I'm Buddy AI 🤖 Ask me anything!",
@@ -72,6 +73,18 @@ export default function AIChat() {
       }]);
     }
     setLoadingHistory(false);
+  };
+
+  const saveChat = async (userId, message, reply) => {
+    try {
+      await supabase.from('ai_chats').insert({
+        user_id: userId,
+        message: message,
+        reply: reply
+      });
+    } catch (e) {
+      console.log('Save error:', e);
+    }
   };
 
   const sendMessage = async (text) => {
@@ -85,39 +98,30 @@ export default function AIChat() {
     setInput('');
     setLoading(true);
 
-    // Build conversation context (last 10 messages only)
     const contextMessages = [...messages.slice(-10), userMsg]
       .map(m => ({ role: m.role, content: m.content }));
 
     let reply = null;
-    let attempts = 0;
-    const maxAttempts = 3;
 
-    while (!reply && attempts < maxAttempts) {
-      attempts++;
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
 
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: contextMessages }),
-          signal: controller.signal
-        });
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: contextMessages }),
+        signal: controller.signal
+      });
 
-        clearTimeout(timeout);
+      clearTimeout(timeout);
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.reply) reply = data.reply;
-        }
-      } catch (err) {
-        console.log(`Attempt ${attempts} failed:`, err.message);
-        if (attempts < maxAttempts) {
-          await new Promise(r => setTimeout(r, 1000 * attempts)); // wait before retry
-        }
+      if (res.ok) {
+        const data = await res.json();
+        if (data.reply) reply = data.reply;
       }
+    } catch (err) {
+      console.log('Fetch error:', err.message);
     }
 
     const aiMsg = {
@@ -129,16 +133,9 @@ export default function AIChat() {
     setMessages(prev => [...prev, aiMsg]);
     setLoading(false);
 
-    // Save to database only if we got a real reply
     if (user && reply) {
-     try {
-  await supabase.from('ai_chats').insert({
-    user_id: user.id,
-    message: userText,
-    reply: reply
-  });
-} catch(e) {}
-      
+      await saveChat(user.id, userText, reply);
+    }
 
     inputRef.current?.focus();
   };
@@ -146,8 +143,11 @@ export default function AIChat() {
   const clearChat = async () => {
     if (!user) return;
     if (!window.confirm('Clear all chat history?')) return;
-
-    await supabase.from('ai_chats').delete().eq('user_id', user.id);
+    try {
+      await supabase.from('ai_chats').delete().eq('user_id', user.id);
+    } catch (e) {
+      console.log('Clear error:', e);
+    }
     setMessages([{
       role: 'assistant',
       content: "Chat cleared! Fresh start 🌟 What's on your mind?",
@@ -164,11 +164,9 @@ export default function AIChat() {
 
   if (loadingHistory) {
     return (
-      <div className="chat-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center', color: '#64748b' }}>
-          <div style={{ fontSize: '48px', marginBottom: '12px' }}>🤖</div>
-          <p>Loading your chat history...</p>
-        </div>
+      <div className="chat-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ fontSize: '48px' }}>🤖</div>
+        <p style={{ color: '#64748b' }}>Loading your chat history...</p>
       </div>
     );
   }
