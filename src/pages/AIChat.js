@@ -131,12 +131,14 @@ export default function AIChat() {
 
     // Save to database only if we got a real reply
     if (user && reply) {
-      await supabase.from('ai_chats').insert({
-        user_id: user.id,
-        message: userText,
-        reply: reply
-      }).catch(() => {});
-    }
+     try {
+  await supabase.from('ai_chats').insert({
+    user_id: user.id,
+    message: userText,
+    reply: reply
+  });
+} catch(e) {}
+      
 
     inputRef.current?.focus();
   };
