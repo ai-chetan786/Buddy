@@ -12,21 +12,19 @@ const QUICK_PROMPTS = [
 
 export default function AIChat() {
   const navigate = useNavigate();
-  const [messages, setMessages] = useState([{
-    role: 'assistant',
-    content: "Hey! I'm Buddy AI 🤖 Your smart companion! Ask me anything — I'm here to help, chat, and make your day better! 😊",
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
+  const [loadingHistory, setLoadingHistory] = useState(true);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) navigate('/login');
-      else setUser(session.user);
+      if (!session) { navigate('/login'); return; }
+      setUser(session.user);
+      loadChatHistory(session.user.id);
     });
   }, [navigate]);
 
@@ -34,61 +32,125 @@ export default function AIChat() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
+  const loadChatHistory = async (userId) => {
+    setLoadingHistory(true);
+    try {
+      const { data } = await supabase
+        .from('ai_chats')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
+        .limit(50);
+
+      if (data && data.length > 0) {
+        const history = [];
+        data.forEach(chat => {
+          history.push({
+            role: 'user',
+            content: chat.message,
+            time: new Date(chat.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          });
+          history.push({
+            role: 'assistant',
+            content: chat.reply,
+            time: new Date(chat.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          });
+        });
+        setMessages(history);
+      } else {
+        setMessages([{
+          role: 'assistant',
+          content: "Hey! I'm Buddy AI 🤖 Your smart companion! Ask me anything — I'm here to help, chat, and make your day better! 😊",
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }]);
+      }
+    } catch (e) {
+      setMessages([{
+        role: 'assistant',
+        content: "Hey! I'm Buddy AI 🤖 Ask me anything!",
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+    }
+    setLoadingHistory(false);
+  };
+
   const sendMessage = async (text) => {
     const userText = text || input.trim();
     if (!userText || loading) return;
 
-    const userMsg = {
-      role: 'user',
-      content: userText,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const userMsg = { role: 'user', content: userText, time: now };
 
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
 
+    // Build conversation context (last 10 messages only)
+    const contextMessages = [...messages.slice(-10), userMsg]
+      .map(m => ({ role: m.role, content: m.content }));
+
     let reply = null;
+    let attempts = 0;
+    const maxAttempts = 3;
 
-    try {
-      // Call our Vercel serverless function (no CORS issues!)
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [
-            ...messages.map(m => ({ role: m.role, content: m.content })),
-            { role: 'user', content: userText }
-          ]
-        })
-      });
+    while (!reply && attempts < maxAttempts) {
+      attempts++;
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-      const data = await res.json();
-      if (data.reply) {
-        reply = data.reply;
-      } else if (data.error) {
-        console.error('API error:', data.error);
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: contextMessages }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeout);
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.reply) reply = data.reply;
+        }
+      } catch (err) {
+        console.log(`Attempt ${attempts} failed:`, err.message);
+        if (attempts < maxAttempts) {
+          await new Promise(r => setTimeout(r, 1000 * attempts)); // wait before retry
+        }
       }
-    } catch (err) {
-      console.error('Fetch error:', err);
     }
 
-    setMessages(prev => [...prev, {
+    const aiMsg = {
       role: 'assistant',
       content: reply || "Sorry yaar! Something went wrong. Please try again! 😅",
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    }]);
+    };
 
+    setMessages(prev => [...prev, aiMsg]);
+    setLoading(false);
+
+    // Save to database only if we got a real reply
     if (user && reply) {
       await supabase.from('ai_chats').insert({
         user_id: user.id,
         message: userText,
-        reply
+        reply: reply
       }).catch(() => {});
     }
 
-    setLoading(false);
     inputRef.current?.focus();
+  };
+
+  const clearChat = async () => {
+    if (!user) return;
+    if (!window.confirm('Clear all chat history?')) return;
+
+    await supabase.from('ai_chats').delete().eq('user_id', user.id);
+    setMessages([{
+      role: 'assistant',
+      content: "Chat cleared! Fresh start 🌟 What's on your mind?",
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }]);
   };
 
   const handleKeyDown = (e) => {
@@ -98,13 +160,16 @@ export default function AIChat() {
     }
   };
 
-  const clearChat = () => {
-    setMessages([{
-      role: 'assistant',
-      content: "Chat cleared! Fresh start 🌟 What's on your mind?",
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    }]);
-  };
+  if (loadingHistory) {
+    return (
+      <div className="chat-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', color: '#64748b' }}>
+          <div style={{ fontSize: '48px', marginBottom: '12px' }}>🤖</div>
+          <p>Loading your chat history...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="chat-container">
@@ -115,20 +180,21 @@ export default function AIChat() {
           <div>
             <div className="ai-name">Buddy AI</div>
             <div className="ai-status">
-              <span className="status-dot"></span> Always online
+              <span className="status-dot"></span>
+              {loading ? 'Typing...' : 'Always online'}
             </div>
           </div>
         </div>
-        <button className="clear-btn" onClick={clearChat}>🗑️</button>
+        <button className="clear-btn" onClick={clearChat} title="Clear chat history">🗑️</button>
       </div>
 
       <div className="chat-messages">
-        {messages.length === 1 && (
+        {messages.length <= 1 && !loading && (
           <div className="quick-prompts">
             <p className="quick-title">Try asking:</p>
             <div className="quick-grid">
               {QUICK_PROMPTS.map((q, i) => (
-                <button key={i} className="quick-btn" onClick={() => sendMessage(q.text)}>
+                <button key={i} className="quick-btn" onClick={() => sendMessage(q.text)} disabled={loading}>
                   {q.icon} {q.text}
                 </button>
               ))}
