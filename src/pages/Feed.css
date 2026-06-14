@@ -1,6 +1,6 @@
 /* ============================================
    BUDDY AI — Feed.css
-   TikTok-style social feed
+   Mobile-first Android style
    ============================================ */
 
 * {
@@ -8,311 +8,238 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Smooth scrolling everywhere */
-html {
-  scroll-behavior: smooth;
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #F0F4FF;
+  width: 100%;
+  min-height: 100%;
 }
 
-/* Hide scrollbars globally inside feed */
-.hide-scrollbar::-webkit-scrollbar { display: none; }
-.hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+/* ── SCROLLBAR HIDE ─────────────────────────── */
+.no-scroll::-webkit-scrollbar { display: none; }
+.no-scroll { scrollbar-width: none; -ms-overflow-style: none; }
 
 /* ── ANIMATIONS ─────────────────────────────── */
 @keyframes floaty {
   0%, 100% { transform: translateY(0); }
   50%       { transform: translateY(-10px); }
 }
-
-@keyframes slideUp {
+@keyframes fadein {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideup {
   from { transform: translateY(100%); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
 }
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
 @keyframes typebounce {
   0%, 60%, 100% { transform: translateY(0); }
   30%            { transform: translateY(-6px); }
 }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.5; }
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes heartPop {
+@keyframes heartpop {
   0%   { transform: scale(1); }
-  50%  { transform: scale(1.5); }
+  50%  { transform: scale(1.45); }
   100% { transform: scale(1); }
 }
-
-/* ── PHONE SHELL ────────────────────────────── */
-.buddy-phone {
-  user-select: none;
-  -webkit-user-select: none;
-  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
-/* Full screen on real mobile */
-@media (max-width: 430px) {
-  .buddy-phone {
-    width: 100vw !important;
-    height: 100dvh !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    top: 0 !important;
-    left: 0 !important;
-    transform: none !important;
-    position: fixed !important;
-  }
+/* ── STORY ROW ──────────────────────────────── */
+.stories-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 0 14px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
-
-/* ── STORY RING ─────────────────────────────── */
-.story-ring-active {
-  background: linear-gradient(135deg, #60A5FA, #7C3AED);
-  animation: none;
-  transition: transform 0.15s;
-}
-.story-ring-active:active {
-  transform: scale(0.93);
-}
+.stories-scroll::-webkit-scrollbar { display: none; }
 
 /* ── POST CARD ──────────────────────────────── */
-.post-card-enter {
-  animation: fadeIn 0.3s ease;
-}
+.post-card-enter { animation: fadein 0.3s ease; }
 
-/* Like button heart animation */
-.like-btn-liked {
-  animation: heartPop 0.3s ease;
-  color: #EF4444 !important;
-}
+/* ── LIKE BUTTON ────────────────────────────── */
+.like-pop { animation: heartpop 0.3s ease; }
 
-/* ── REEL BOX ───────────────────────────────── */
-.reel-side-btn {
+/* ── REEL SIDE BUTTONS ──────────────────────── */
+.r-icon-btn {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(255,255,255,0.22);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 19px;
   transition: transform 0.15s;
+  cursor: pointer;
 }
-.reel-side-btn:active {
-  transform: scale(1.35);
-}
+.r-icon-btn:active { transform: scale(1.35); }
 
-/* play button */
+/* ── PLAY BUTTON ────────────────────────────── */
 .play-btn {
   transition: transform 0.2s;
+  cursor: pointer;
 }
-.play-btn:active {
-  transform: translateX(-50%) scale(0.9);
-}
-
-/* ── FOLLOW BUTTON ──────────────────────────── */
-.follow-btn {
-  transition: all 0.2s ease;
-}
-.follow-btn:active {
-  transform: scale(0.93);
-}
+.play-btn:active { transform: translateX(-50%) scale(0.9); }
 
 /* ── BOTTOM NAV ─────────────────────────────── */
-.nav-item-buddy {
-  transition: color 0.2s, transform 0.15s;
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  font-size: 9.5px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  transition: color 0.2s;
+  position: relative;
+  min-width: 50px;
 }
-.nav-item-buddy:active {
-  transform: scale(0.9);
-}
+.bottom-nav-item:active { transform: scale(0.9); }
 
-.nav-plus-btn {
+.nav-plus {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #60A5FA, #2563EB);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; color: white;
+  cursor: pointer; margin-bottom: 6px;
+  box-shadow: 0 4px 14px rgba(37,99,235,0.4);
   transition: transform 0.2s;
 }
-.nav-plus-btn:active {
-  transform: scale(0.9);
-}
+.nav-plus:active { transform: scale(0.9); }
 
-/* ── SHEET / MODAL ──────────────────────────── */
-.sheet-open {
-  animation: slideUp 0.28s ease;
+/* ── MESSAGES SIDEBAR CONTACT ───────────────── */
+.contact-item {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 5px; padding: 14px 6px; cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.15s;
 }
-
-/* ── COMMENT INPUT ──────────────────────────── */
-.cmt-input:focus {
-  border-color: #2563EB !important;
-  outline: none;
-}
+.contact-item:active { background: #f0f7ff; }
 
 /* ── CHAT BUBBLES ───────────────────────────── */
 .bubble-me {
-  background: linear-gradient(135deg, #3B82F6, #2563EB);
-  color: white;
+  background: linear-gradient(135deg, #3B82F6, #2563EB) !important;
+  color: white !important;
   border-bottom-right-radius: 4px !important;
-  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.3);
+  box-shadow: 0 2px 10px rgba(37,99,235,0.3) !important;
 }
-
 .bubble-them {
-  background: white;
-  color: #1E293B;
+  background: white !important;
+  color: #1E293B !important;
   border-bottom-left-radius: 4px !important;
-  box-shadow: 0 1px 6px rgba(37, 99, 235, 0.08);
+  box-shadow: 0 1px 6px rgba(37,99,235,0.08) !important;
 }
 
 /* ── TYPING DOTS ────────────────────────────── */
-.typing-dot-1 { animation: typebounce 1.2s 0s infinite; }
-.typing-dot-2 { animation: typebounce 1.2s 0.2s infinite; }
-.typing-dot-3 { animation: typebounce 1.2s 0.4s infinite; }
+.dot1 { animation: typebounce 1.2s 0.0s infinite; }
+.dot2 { animation: typebounce 1.2s 0.2s infinite; }
+.dot3 { animation: typebounce 1.2s 0.4s infinite; }
 
-/* ── MEME CARD ──────────────────────────────── */
-.meme-card {
+/* ── FOLLOW BUTTON ──────────────────────────── */
+.follow-btn {
+  width: 100%;
+  border-radius: 20px;
+  padding: 6px 20px;
+  font-size: 12px; font-weight: 700;
   cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  border: none;
+}
+.follow-btn:active { transform: scale(0.95); }
+
+/* ── SUGGESTION CARD ────────────────────────── */
+.sug-card {
+  background: white;
+  border-radius: 16px;
+  padding: 14px 12px;
+  min-width: 115px;
+  display: flex; flex-direction: column;
+  align-items: center; gap: 8px;
+  box-shadow: 0 2px 10px rgba(37,99,235,0.08);
+  flex-shrink: 0;
   transition: transform 0.15s;
 }
-.meme-card:active {
-  transform: scale(0.97);
-}
+.sug-card:active { transform: scale(0.97); }
 
 /* ── CREATE OPTIONS ─────────────────────────── */
 .create-opt {
-  transition: all 0.2s;
+  background: #EFF6FF;
+  border-radius: 14px;
+  padding: 18px 10px;
+  display: flex; flex-direction: column;
+  align-items: center; gap: 7px;
+  cursor: pointer;
   border: 2px solid transparent;
+  transition: all 0.2s;
 }
 .create-opt:active {
   border-color: #2563EB;
   transform: scale(0.96);
 }
 
+/* ── STORY RING ─────────────────────────────── */
+.story-ring-wrap {
+  cursor: pointer;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.story-ring-wrap:active { transform: scale(0.92); }
+
 /* ── TOAST ──────────────────────────────────── */
 .buddy-toast {
-  animation: fadeIn 0.2s ease;
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e293b;
+  color: white;
+  padding: 9px 20px;
+  border-radius: 22px;
+  font-size: 12.5px;
+  z-index: 9999;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  animation: fadein 0.2s ease;
+  pointer-events: none;
 }
 
-/* ── SUGGESTION CARD ────────────────────────── */
-.sug-card {
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-.sug-card:active {
-  transform: scale(0.97);
-}
-
-/* ── CONTACT ITEM (messages sidebar) ───────── */
-.contact-item {
-  transition: background 0.15s;
-}
-.contact-item:active {
-  background: #f0f7ff;
-}
-
-/* ── CI ACTION BUTTONS ──────────────────────── */
-.ci-action {
-  transition: background 0.15s;
-}
-.ci-action:active {
-  background: #DBEAFE;
-}
-
-/* ── STORY VIEWER ───────────────────────────── */
-.story-viewer-close:active {
-  transform: scale(0.9);
-}
-
-/* ── SCROLLABLE STORIES ROW ─────────────────── */
-.stories-row {
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-.stories-row::-webkit-scrollbar {
-  display: none;
-}
-
-/* ── SUGGEST SCROLL ─────────────────────────── */
-.sug-scroll {
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-.sug-scroll::-webkit-scrollbar {
-  display: none;
-}
-
-/* ── CHAT MESSAGES AREA ─────────────────────── */
-.chat-msgs-area {
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-.chat-msgs-area::-webkit-scrollbar {
-  display: none;
-}
-
-/* ── LOADING SKELETON ───────────────────────── */
-.skeleton {
-  background: linear-gradient(90deg, #f0f4ff 25%, #e0e8ff 50%, #f0f4ff 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  border-radius: 8px;
-}
-
-@keyframes shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-/* ── VERIFIED BADGE ─────────────────────────── */
-.verified-badge {
-  color: #2563EB;
-  font-size: 12px;
-}
-
-/* ── HASHTAG TEXT ───────────────────────────── */
-.hashtag {
-  color: #2563EB;
-  font-weight: 600;
-}
+/* ── SHEET MODAL ────────────────────────────── */
+.sheet-open { animation: slideup 0.28s ease; }
 
 /* ── EMPTY STATE ────────────────────────────── */
 .empty-state {
   text-align: center;
   padding: 40px 20px;
   color: #9CA3AF;
-  animation: fadeIn 0.4s ease;
+  animation: fadein 0.4s ease;
 }
 
-/* ── INPUT FOCUS STATES ─────────────────────── */
-input:focus, textarea:focus {
-  outline: none;
+/* ── MEME CARD ──────────────────────────────── */
+.meme-card {
+  cursor: pointer;
+  transition: transform 0.15s;
 }
+.meme-card:active { transform: scale(0.97); }
 
-/* ── ACTIVE CONTACT HIGHLIGHT ───────────────── */
-.active-contact {
-  background: #EFF6FF;
-  border-left: 3px solid #2563EB;
-}
+/* ── INPUT FOCUS ────────────────────────────── */
+input:focus, textarea:focus { outline: none; }
 
 /* ── GLOW BAR ───────────────────────────────── */
 .glow-bar {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  bottom: 0; left: 0; right: 0;
   height: 3px;
   background: linear-gradient(90deg, transparent, #60A5FA, #2563EB, transparent);
   z-index: 4;
 }
 
-/* ── RESPONSIVE ADJUSTMENTS ─────────────────── */
-@media (max-width: 380px) {
-  .buddy-phone {
-    font-size: 14px;
-  }
-}
-
-@media (min-width: 431px) {
-  /* Desktop — show phone in center */
-  .buddy-phone {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-  }
+/* ── MOBILE FULL SCREEN ─────────────────────── */
+@media (max-width: 480px) {
+  body { overflow-x: hidden; }
 }
