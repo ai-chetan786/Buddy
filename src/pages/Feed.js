@@ -241,302 +241,393 @@ function FollowSuggestions({ currentUserId, following, onFollow }) {
 // ─── MESSAGES SCREEN ─────────────────────────────────────────────────────────
 function MessagesScreen({ onClose, currentUser }) {
   const contacts = [
-    { id: 'buddy', name: 'Buddy', emoji: '🤖', status: 'Online', verified: true, bg: 'linear-gradient(135deg,#60A5FA,#2563EB)', msgs: [
-      { me: false, txt: "Hello! 👋 How's it going?" },
-      { me: true, txt: "Hi Buddy! I'm good. Just chilling at home. 👋" },
+    { id: 'buddy',   name: 'Buddy',   emoji: '🤖', status: 'Online',  verified: true,  bg: 'linear-gradient(135deg,#60A5FA,#2563EB)',   msgs: [
+      { me: false, txt: "Hello! 👋 How\'s it going?" },
+      { me: true,  txt: "Hi Buddy! I\'m good. Just chilling at home. 👋" },
       { me: false, txt: "That sounds like fun! 🎉 Want me to find some funny memes?" },
-      { me: true, txt: "Sure, let's see some memes!" },
+      { me: true,  txt: "Sure, let\'s see some memes!" },
       { me: false, txt: "I found a good one for you! 😄", meme: true },
     ]},
-    { id: 'maya', name: 'Maya', emoji: '👩', status: 'Offline', verified: true, bg: 'linear-gradient(135deg,#F9A8D4,#EC4899)', msgs: [
+    { id: 'maya',    name: 'Maya',    emoji: '👩', status: 'Offline', verified: true,  bg: 'linear-gradient(135deg,#F9A8D4,#EC4899)',   msgs: [
       { me: false, txt: "Hey! Check out my new AI artwork 🎨" },
-      { me: true, txt: "Wow Maya! That looks amazing! 😍" },
+      { me: true,  txt: "Wow Maya! That looks amazing! 😍" },
       { me: false, txt: "Thanks! Been working on it all night 😅" },
     ]},
-    { id: 'akash', name: 'Akash', emoji: '👦', status: 'Online', verified: false, bg: 'linear-gradient(135deg,#86EFAC,#22C55E)', msgs: [
-      { me: true, txt: "Bhai, code review kar sakta hai? 💻" },
+    { id: 'akash',   name: 'Akash',   emoji: '👦', status: 'Online',  verified: false, bg: 'linear-gradient(135deg,#86EFAC,#22C55E)',   msgs: [
+      { me: true,  txt: "Bhai, code review kar sakta hai? 💻" },
       { me: false, txt: "Haan bhai! Send kar link 🔗" },
       { me: false, txt: "Bahut accha code hai! Just fix the null checks 🛠️" },
     ]},
-    { id: 'priya', name: 'Priya', emoji: '👧', status: 'Away', verified: true, bg: 'linear-gradient(135deg,#FDE68A,#F59E0B)', msgs: [
+    { id: 'priya',   name: 'Priya',   emoji: '👧', status: 'Away',    verified: true,  bg: 'linear-gradient(135deg,#FDE68A,#F59E0B)',   msgs: [
       { me: false, txt: "New photos uploaded! 📸 Check my profile" },
-      { me: true, txt: "Priya your photography is 🔥🔥" },
+      { me: true,  txt: "Priya your photography is 🔥🔥" },
       { me: false, txt: "Hehe thank you! 😊 Golden hour hits different" },
     ]},
-    { id: 'support', name: 'Support', emoji: '🛡️', status: 'Online', verified: false, bg: 'linear-gradient(135deg,#60A5FA,#2563EB)', msgs: [
+    { id: 'support', name: 'Support', emoji: '🛡️', status: 'Online',  verified: false, bg: 'linear-gradient(135deg,#60A5FA,#2563EB)',   msgs: [
       { me: false, txt: "Hi! Welcome to Buddy AI Support 🤖 How can we help?" },
-      { me: true, txt: "I need help with my account" },
-      { me: false, txt: "Sure! Go to Profile → Settings. Let us know if you need more help 😊" },
+      { me: true,  txt: "I need help with my account" },
+      { me: false, txt: "Sure! Go to Profile → Settings. Need more help? 😊" },
     ]},
   ];
 
-  const [active, setActive] = useState('buddy');
-  const [chatData, setChatData] = useState(() => {
+  const [active, setActive]       = useState(\'buddy\');
+  const [chatData, setChatData]   = useState(() => {
     const d = {};
     contacts.forEach(c => { d[c.id] = [...c.msgs]; });
     return d;
   });
-  const [inputVal, setInputVal] = useState('');
-  const [typing, setTyping] = useState(false);
-  const msgsRef = useRef(null);
+  const [inputVal, setInputVal]   = useState(\'\');
+  const [typing, setTyping]       = useState(false);
+  const msgsRef                   = useRef(null);
+  const ac                        = contacts.find(c => c.id === active);
 
-  const activeContact = contacts.find(c => c.id === active);
-
-  const scrollBottom = () => {
+  useEffect(() => {
     setTimeout(() => {
       if (msgsRef.current) msgsRef.current.scrollTop = msgsRef.current.scrollHeight;
     }, 50);
-  };
-
-  useEffect(() => scrollBottom(), [active, chatData]);
+  }, [active, chatData]);
 
   const sendMsg = () => {
     if (!inputVal.trim()) return;
     const txt = inputVal.trim();
-    setInputVal('');
+    setInputVal(\'\');
     setChatData(d => ({ ...d, [active]: [...d[active], { me: true, txt }] }));
     setTyping(true);
-    const replies = active === 'buddy'
-      ? ["That's great! 😊 How can I help?", "Awesome! I'm always here for you 🤖💙", "Interesting! Want me to search something? 🔍"]
-      : ["That's so cool! 😊", "Interesting! Tell me more 🤔", "Haha that's funny! 😂", "Love that! ❤️"];
+    const pool = active === \'buddy\'
+      ? ["That\'s great! 😊 How can I help?", "Awesome! I\'m always here 🤖💙", "Interesting! Want me to search something? 🔍"]
+      : ["That\'s so cool! 😊", "Interesting! Tell me more 🤔", "Haha! 😂", "Love that! ❤️", "Great idea! 🚀"];
     setTimeout(() => {
-      const reply = replies[Math.floor(Math.random() * replies.length)];
+      const reply = pool[Math.floor(Math.random() * pool.length)];
       setChatData(d => ({ ...d, [active]: [...d[active], { me: false, txt: reply }] }));
       setTyping(false);
-    }, 1200 + Math.random() * 800);
+    }, 1000 + Math.random() * 800);
   };
 
-  const emojis = ['😊','😂','❤️','🔥','👍','😍','🎉','🙏','💯','😎'];
+  const addEmoji = () => {
+    const emojis = [\'😊\',\'😂\',\'❤️\',\'🔥\',\'👍\',\'😍\',\'🎉\',\'🙏\',\'💯\',\'😎\'];
+    setInputVal(v => v + emojis[Math.floor(Math.random() * emojis.length)]);
+  };
+
+  // ── SIDEBAR CONTACT ITEM ─────────────────────────────────────────
+  const ContactItem = ({ c }) => (
+    <div onClick={() => setActive(c.id)} style={{
+      display: \'flex\', flexDirection: \'column\', alignItems: \'center\',
+      gap: 4, padding: \'12px 6px\', cursor: \'pointer\',
+      borderBottom: \'1px solid #f1f5f9\',
+      background: active === c.id ? \'#EFF6FF\' : \'white\',
+      borderLeft: active === c.id ? \'3px solid #2563EB\' : \'3px solid transparent\',
+      transition: \'background 0.15s\'
+    }}>
+      <div style={{
+        width: 48, height: 48, borderRadius: \'50%\', background: c.bg,
+        display: \'flex\', alignItems: \'center\', justifyContent: \'center\',
+        fontSize: 22, position: \'relative\', flexShrink: 0,
+        boxShadow: active === c.id ? \'0 2px 10px rgba(37,99,235,0.3)\' : \'none\'
+      }}>
+        {c.emoji}
+        {c.status === \'Online\'
+          ? <div style={{ position:\'absolute\',bottom:1,right:1,width:12,height:12,background:\'#22C55E\',borderRadius:\'50%\',border:\'2px solid white\'}} />
+          : <div style={{ position:\'absolute\',bottom:1,right:1,width:12,height:12,background:\'#2563EB\',borderRadius:\'50%\',border:\'2px solid white\',display:\'flex\',alignItems:\'center\',justifyContent:\'center\',color:\'white\',fontSize:8,fontWeight:700}}>+</div>
+        }
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: \'#1E293B\', textAlign: \'center\'}}>{c.name}</div>
+      <div style={{ fontSize: 9, fontWeight: 500, color: c.status === \'Online\' ? \'#22C55E\' : \'#9CA3AF\'}}>{c.status}</div>
+    </div>
+  );
+
+  // ── CHAT BUBBLE ──────────────────────────────────────────────────
+  const Bubble = ({ m }) => (
+    <div style={{ display:\'flex\', alignItems:\'flex-end\', gap:7, flexDirection: m.me ? \'row-reverse\' : \'row\' }}>
+      {!m.me && (
+        <div style={{
+          width:28, height:28, borderRadius:\'50%\', background: ac.bg,
+          display:\'flex\', alignItems:\'center\', justifyContent:\'center\',
+          fontSize:14, flexShrink:0
+        }}>{ac.emoji}</div>
+      )}
+      {m.meme ? (
+        <div style={{ display:\'flex\', flexDirection:\'column\', gap:6, maxWidth:\'72%\' }}>
+          <div style={{
+            background:\'white\', padding:\'9px 13px\', borderRadius:18,
+            borderBottomLeftRadius:4, fontSize:12.5, color:\'#1E293B\',
+            boxShadow:\'0 1px 6px rgba(37,99,235,0.08)\'
+          }}>{m.txt}</div>
+          {/* Meme card — matches screenshot exactly */}
+          <div style={{
+            background:\'linear-gradient(135deg,#dbeafe,#bfdbfe,#93c5fd)\',
+            borderRadius:14, overflow:\'hidden\', maxWidth:210,
+            boxShadow:\'0 3px 12px rgba(37,99,235,0.2)\'
+          }}>
+            <div style={{padding:\'10px 10px 6px\',fontSize:11,color:\'#1e40af\',fontWeight:500,lineHeight:1.4}}>
+              When you finish a difficult task or nimole teng you walked into the room:
+            </div>
+            <div style={{
+              display:\'flex\', alignItems:\'center\', justifyContent:\'center\',
+              padding:\'12px 8px\', fontSize:52,
+              background:\'linear-gradient(135deg,#bfdbfe,#93c5fd)\', position:\'relative\'
+            }}>
+              🤖
+              <div style={{
+                position:\'absolute\', bottom:8, left:10,
+                width:26, height:26, background:\'rgba(37,99,235,0.85)\',
+                borderRadius:\'50%\', display:\'flex\', alignItems:\'center\',
+                justifyContent:\'center\', color:\'white\', fontSize:11
+              }}>▶</div>
+            </div>
+            <div style={{
+              background:\'rgba(30,58,138,0.85)\', color:\'white\',
+              padding:\'7px 10px\', fontSize:12, fontWeight:700, textAlign:\'center\'
+            }}>I\'m doing my best</div>
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          maxWidth:\'70%\', padding:\'9px 13px\', borderRadius:18, fontSize:12.5,
+          lineHeight:1.5, wordBreak:\'break-word\',
+          ...(m.me
+            ? { background:\'linear-gradient(135deg,#3B82F6,#2563EB)\', color:\'white\',
+                borderBottomRightRadius:4, boxShadow:\'0 2px 10px rgba(37,99,235,0.3)\' }
+            : { background:\'white\', color:\'#1E293B\',
+                borderBottomLeftRadius:4, boxShadow:\'0 1px 6px rgba(37,99,235,0.08)\' })
+        }}>
+          {m.txt}
+          {m.me && <span style={{fontSize:10,opacity:0.75,float:\'right\',marginLeft:6,marginTop:3}}>✓✓</span>}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div style={{
-      position: 'absolute', inset: 0, zIndex: 50,
-      background: '#EFF6FF', display: 'flex', flexDirection: 'column'
+      position:\'absolute\', inset:0, zIndex:50,
+      background:\'#EFF6FF\', display:\'flex\', flexDirection:\'column\'
     }}>
-      {/* Top bar */}
+
+      {/* ── TOP BAR (blue gradient like screenshot) ── */}
       <div style={{
-        background: 'white', padding: '14px 16px 10px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderBottom: '1px solid #e8f0fe', flexShrink: 0
+        flexShrink:0,
+        background:\'linear-gradient(135deg,#2563EB,#1D4ED8)\',
+        padding:\'14px 16px 12px\',
+        display:\'flex\', alignItems:\'center\', justifyContent:\'space-between\'
       }}>
-        <span style={{ fontSize: 22, cursor: 'pointer' }} onClick={onClose}>←</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 17, fontWeight: 800, color: '#1E293B' }}>
+        <span style={{fontSize:22,cursor:\'pointer\',color:\'white\'}} onClick={onClose}>←</span>
+        <div style={{display:\'flex\',alignItems:\'center\',gap:8}}>
           <div style={{
-            width: 28, height: 28, background: 'linear-gradient(135deg,#60A5FA,#2563EB)',
-            borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14
+            width:30, height:30, background:\'white\', borderRadius:\'50%\',
+            display:\'flex\', alignItems:\'center\', justifyContent:\'center\', fontSize:16
           }}>🤖</div>
-          Messages
+          <span style={{fontSize:17,fontWeight:800,color:\'white\'}}>Buddy AI</span>
         </div>
-        <span style={{ fontSize: 20, cursor: 'pointer', color: '#2563EB' }}>✏️</span>
+        <div style={{display:\'flex\',alignItems:\'center\',gap:12}}>
+          {/* Notification bell with badge */}
+          <div style={{position:\'relative\',cursor:\'pointer\'}}>
+            <span style={{fontSize:20,color:\'white\'}}>🔔</span>
+            <div style={{
+              position:\'absolute\',top:-4,right:-4,
+              background:\'#EF4444\',color:\'white\',fontSize:8,
+              width:14,height:14,borderRadius:\'50%\',
+              display:\'flex\',alignItems:\'center\',justifyContent:\'center\',fontWeight:700
+            }}>3</div>
+          </div>
+          {/* User avatar circle */}
+          <div style={{
+            width:30,height:30,borderRadius:\'50%\',
+            background:\'linear-gradient(135deg,#93C5FD,#1D4ED8)\',
+            display:\'flex\',alignItems:\'center\',justifyContent:\'center\',
+            color:\'white\',fontSize:13,fontWeight:700,cursor:\'pointer\',
+            border:\'2px solid rgba(255,255,255,0.5)\'
+          }}>
+            {currentUser?.email?.charAt(0).toUpperCase() || \'C\'}
+          </div>
+        </div>
       </div>
 
-      {/* Body: sidebar + chat */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Sidebar */}
+      {/* ── BODY: sidebar + chat ── */}
+      <div style={{flex:1, display:\'flex\', overflow:\'hidden\'}}>
+
+        {/* LEFT SIDEBAR */}
         <div style={{
-          width: 110, flexShrink: 0, background: 'white',
-          borderRight: '1px solid #e8f0fe', overflowY: 'auto'
+          width:108, flexShrink:0, background:\'white\',
+          borderRight:\'1px solid #e8f0fe\', overflowY:\'auto\',
+          scrollbarWidth:\'none\'
         }}>
-          {contacts.map(c => (
-            <div key={c.id} onClick={() => setActive(c.id)} style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              gap: 5, padding: '14px 8px', cursor: 'pointer',
-              borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s',
-              background: active === c.id ? '#EFF6FF' : 'white',
-              borderLeft: active === c.id ? '3px solid #2563EB' : '3px solid transparent'
-            }}>
-              <div style={{
-                width: 46, height: 46, borderRadius: '50%', background: c.bg,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 22, position: 'relative'
-              }}>
-                {c.emoji}
-                {c.status === 'Online' && (
-                  <div style={{
-                    position: 'absolute', bottom: 1, right: 1,
-                    width: 12, height: 12, background: '#22C55E',
-                    borderRadius: '50%', border: '2px solid white'
-                  }} />
-                )}
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#1E293B', textAlign: 'center' }}>{c.name}</div>
-              <div style={{ fontSize: 9, color: c.status === 'Online' ? '#22C55E' : '#9CA3AF', fontWeight: 500 }}>{c.status}</div>
-            </div>
-          ))}
+          {contacts.map(c => <ContactItem key={c.id} c={c} />)}
         </div>
 
-        {/* Chat panel */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#EFF6FF' }}>
-          {/* Chat header */}
+        {/* RIGHT CHAT PANEL */}
+        <div style={{flex:1, display:\'flex\', flexDirection:\'column\', overflow:\'hidden\', background:\'#EFF6FF\'}}>
+
+          {/* Chat contact header */}
           <div style={{
-            background: 'white', padding: '10px 14px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            borderBottom: '1px solid #e8f0fe', flexShrink: 0
+            flexShrink:0, background:\'white\',
+            padding:\'10px 14px\',
+            display:\'flex\', alignItems:\'center\', justifyContent:\'space-between\',
+            borderBottom:\'1px solid #e8f0fe\'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <div style={{display:\'flex\',alignItems:\'center\',gap:9}}>
               <div style={{
-                width: 38, height: 38, borderRadius: '50%',
-                background: activeContact.bg, display: 'flex',
-                alignItems: 'center', justifyContent: 'center', fontSize: 18
-              }}>{activeContact.emoji}</div>
+                width:40, height:40, borderRadius:\'50%\', background: ac.bg,
+                display:\'flex\', alignItems:\'center\', justifyContent:\'center\', fontSize:20,
+                position:\'relative\'
+              }}>
+                {ac.emoji}
+                {ac.status === \'Online\' && (
+                  <div style={{position:\'absolute\',bottom:1,right:1,width:11,height:11,background:\'#22C55E\',borderRadius:\'50%\',border:\'2px solid white\'}} />
+                )}
+              </div>
               <div>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#1E293B' }}>
-                  {activeContact.name} {activeContact.verified && <span style={{ color: '#2563EB', fontSize: 11 }}>✔️</span>}
+                <div style={{fontSize:14,fontWeight:700,color:\'#1E293B\',display:\'flex\',alignItems:\'center\',gap:4}}>
+                  {ac.name}
+                  {ac.verified && <span style={{color:\'#2563EB\',fontSize:12}}>✔</span>}
                 </div>
-                <div style={{ fontSize: 10, color: activeContact.status === 'Online' ? '#22C55E' : '#9CA3AF' }}>
-                  {activeContact.status}
-                </div>
+                <div style={{fontSize:10,color: ac.status===\'Online\' ? \'#22C55E\' : \'#9CA3AF\'}}>{ac.status}</div>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 14 }}>
-              <span style={{ fontSize: 20, cursor: 'pointer', color: '#2563EB' }}>📞</span>
-              <span style={{ fontSize: 20, cursor: 'pointer', color: '#2563EB' }}>📹</span>
+            <div style={{display:\'flex\',alignItems:\'center\',gap:10}}>
+              {/* Phone icon — pink/red like screenshot */}
+              <div style={{
+                width:32,height:32,borderRadius:\'50%\',
+                background:\'linear-gradient(135deg,#F9A8D4,#EC4899)\',
+                display:\'flex\',alignItems:\'center\',justifyContent:\'center\',
+                fontSize:15,cursor:\'pointer\'
+              }}>📞</div>
+              {/* Video icon — purple like screenshot */}
+              <div style={{
+                width:32,height:32,borderRadius:\'50%\',
+                background:\'linear-gradient(135deg,#C4B5FD,#7C3AED)\',
+                display:\'flex\',alignItems:\'center\',justifyContent:\'center\',
+                fontSize:15,cursor:\'pointer\'
+              }}>📹</div>
+              <span style={{fontSize:18,color:\'#9CA3AF\',cursor:\'pointer\'}}>···</span>
             </div>
           </div>
 
-          {/* Messages */}
-          <div ref={msgsRef} style={{
-            flex: 1, overflowY: 'auto', padding: '12px 10px',
-            display: 'flex', flexDirection: 'column', gap: 10
+          {/* Cmine button row */}
+          <div style={{
+            background:\'white\', padding:\'4px 14px 8px\',
+            display:\'flex\', justifyContent:\'flex-end\',
+            borderBottom:\'1px solid #e8f0fe\', flexShrink:0
           }}>
-            {(chatData[active] || []).map((m, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'flex-end', gap: 7,
-                flexDirection: m.me ? 'row-reverse' : 'row'
-              }}>
-                {!m.me && (
-                  <div style={{
-                    width: 26, height: 26, borderRadius: '50%',
-                    background: activeContact.bg, display: 'flex',
-                    alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0
-                  }}>{activeContact.emoji}</div>
-                )}
-                {m.meme ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: '72%' }}>
-                    <div style={{
-                      background: 'white', padding: '9px 13px', borderRadius: 18,
-                      borderBottomLeftRadius: 4, fontSize: 12.5, color: '#1E293B',
-                      boxShadow: '0 1px 6px rgba(37,99,235,0.08)'
-                    }}>{m.txt}</div>
-                    <div style={{
-                      background: 'linear-gradient(135deg,#dbeafe,#bfdbfe,#93c5fd)',
-                      borderRadius: 14, overflow: 'hidden', maxWidth: 200,
-                      boxShadow: '0 3px 12px rgba(37,99,235,0.2)', cursor: 'pointer'
-                    }}>
-                      <div style={{ padding: '10px 10px 6px', fontSize: 10.5, color: '#1e40af', fontWeight: 500 }}>
-                        When you finish a difficult task and walk into the room:
-                      </div>
-                      <div style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        padding: 8, fontSize: 48,
-                        background: 'linear-gradient(135deg,#bfdbfe,#93c5fd)', position: 'relative'
-                      }}>
-                        🤖
-                        <div style={{
-                          position: 'absolute', bottom: 6, left: 8,
-                          width: 22, height: 22, background: 'rgba(37,99,235,0.8)',
-                          borderRadius: '50%', display: 'flex', alignItems: 'center',
-                          justifyContent: 'center', color: 'white', fontSize: 10
-                        }}>▶</div>
-                      </div>
-                      <div style={{ background: 'rgba(30,58,138,0.75)', color: 'white', padding: '5px 8px', fontSize: 11, fontWeight: 700, textAlign: 'center' }}>
-                        I'm doing my best
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{
-                    maxWidth: '68%', padding: '9px 13px', borderRadius: 18,
-                    fontSize: 12.5, lineHeight: 1.45, wordBreak: 'break-word',
-                    ...(m.me
-                      ? { background: 'linear-gradient(135deg,#3B82F6,#2563EB)', color: 'white', borderBottomRightRadius: 4, boxShadow: '0 2px 10px rgba(37,99,235,0.3)' }
-                      : { background: 'white', color: '#1E293B', borderBottomLeftRadius: 4, boxShadow: '0 1px 6px rgba(37,99,235,0.08)' })
-                  }}>
-                    {m.txt}
-                    {m.me && <span style={{ fontSize: 10, opacity: 0.8, float: 'right', marginLeft: 6, marginTop: 2 }}>✓✓</span>}
-                  </div>
-                )}
-              </div>
-            ))}
+            <button style={{
+              background:\'white\', border:\'1.5px solid #BFDBFE\',
+              color:\'#2563EB\', borderRadius:18, padding:\'4px 16px\',
+              fontSize:11, fontWeight:600, cursor:\'pointer\',
+              fontFamily:\'inherit\'
+            }}>Cmine</button>
+          </div>
+
+          {/* MESSAGES AREA */}
+          <div ref={msgsRef} style={{
+            flex:1, overflowY:\'auto\', padding:\'12px 10px\',
+            display:\'flex\', flexDirection:\'column\', gap:10,
+            scrollbarWidth:\'none\'
+          }}>
+            {(chatData[active] || []).map((m, i) => <Bubble key={i} m={m} />)}
+
+            {/* Typing indicator */}
             {typing && (
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 7 }}>
+              <div style={{display:\'flex\',alignItems:\'flex-end\',gap:7}}>
                 <div style={{
-                  width: 26, height: 26, borderRadius: '50%',
-                  background: activeContact.bg, display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', fontSize: 13
-                }}>{activeContact.emoji}</div>
+                  width:28,height:28,borderRadius:\'50%\',background:ac.bg,
+                  display:\'flex\',alignItems:\'center\',justifyContent:\'center\',fontSize:14
+                }}>{ac.emoji}</div>
                 <div style={{
-                  display: 'flex', alignItems: 'center', gap: 4, padding: '8px 12px',
-                  background: 'white', borderRadius: 18, borderBottomLeftRadius: 4,
-                  boxShadow: '0 1px 6px rgba(37,99,235,0.08)'
+                  display:\'flex\',alignItems:\'center\',gap:4,
+                  padding:\'8px 12px\', background:\'white\',
+                  borderRadius:18, borderBottomLeftRadius:4,
+                  boxShadow:\'0 1px 6px rgba(37,99,235,0.08)\'
                 }}>
-                  {[0, 0.2, 0.4].map((d, i) => (
+                  {[0,0.2,0.4].map((d,i) => (
                     <div key={i} style={{
-                      width: 6, height: 6, background: '#93c5fd', borderRadius: '50%',
-                      animation: `typebounce 1.2s ${d}s infinite`
-                    }} />
+                      width:6,height:6,background:\'#93c5fd\',borderRadius:\'50%\',
+                      animation:`typebounce 1.2s ${d}s infinite`
+                    }}/>
                   ))}
                 </div>
               </div>
             )}
+
+            {/* Collab avatar (bottom right) — like screenshot */}
+            <div style={{display:\'flex\',justifyContent:\'flex-end\',paddingRight:4}}>
+              <div style={{
+                width:34,height:34,borderRadius:\'50%\',
+                background:\'linear-gradient(135deg,#F9A8D4,#EC4899)\',
+                border:\'2px solid white\',
+                display:\'flex\',alignItems:\'center\',justifyContent:\'center\',
+                fontSize:16, boxShadow:\'0 2px 8px rgba(0,0,0,0.1)\', position:\'relative\'
+              }}>
+                👧
+                <div style={{
+                  position:\'absolute\',bottom:-2,right:-2,
+                  width:14,height:14,background:\'#2563EB\',
+                  borderRadius:\'50%\',border:\'2px solid white\',
+                  color:\'white\',fontSize:8,fontWeight:700,
+                  display:\'flex\',alignItems:\'center\',justifyContent:\'center\'
+                }}>+</div>
+              </div>
+            </div>
           </div>
 
-          {/* Input bar */}
+          {/* INPUT BAR */}
           <div style={{
-            background: 'white', padding: '10px 12px 14px',
-            display: 'flex', alignItems: 'center', gap: 8,
-            borderTop: '1px solid #e8f0fe', flexShrink: 0
+            flexShrink:0, background:\'white\',
+            padding:\'10px 12px 14px\',
+            display:\'flex\', alignItems:\'center\', gap:8,
+            borderTop:\'1px solid #e8f0fe\'
           }}>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {['📎','🖼️'].map((ic, i) => (
-                <div key={i} style={{
-                  width: 30, height: 30, borderRadius: 8, background: '#EFF6FF',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 14, cursor: 'pointer'
-                }}>{ic}</div>
-              ))}
-            </div>
+            {/* Action icons */}
+            {[\'📎\',\'🖼️\',\'⊞\'].map((ic,i) => (
+              <div key={i} style={{
+                width:30,height:30,borderRadius:8,
+                background:\'#EFF6FF\',
+                display:\'flex\',alignItems:\'center\',justifyContent:\'center\',
+                fontSize:14,cursor:\'pointer\'
+              }}>{ic}</div>
+            ))}
+            {/* Text input */}
             <div style={{
-              flex: 1, display: 'flex', alignItems: 'center',
-              background: '#F1F5FF', borderRadius: 22, padding: '8px 12px', gap: 6,
-              border: '1.5px solid #e8f0fe'
+              flex:1,display:\'flex\',alignItems:\'center\',
+              background:\'#F1F5FF\',borderRadius:22,
+              padding:\'8px 12px\',gap:6,
+              border:\'1.5px solid #e8f0fe\'
             }}>
               <input
                 value={inputVal}
                 onChange={e => setInputVal(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && sendMsg()}
+                onKeyDown={e => e.key===\'Enter\' && sendMsg()}
                 placeholder="Type a message..."
-                style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 12.5, color: '#1E293B', outline: 'none', fontFamily: 'inherit' }}
-              />
-              <span
-                onClick={() => {
-                  const e = emojis[Math.floor(Math.random() * emojis.length)];
-                  setInputVal(v => v + e);
+                style={{
+                  flex:1,border:\'none\',background:\'transparent\',
+                  fontSize:12.5,color:\'#1E293B\',outline:\'none\',fontFamily:\'inherit\'
                 }}
-                style={{ fontSize: 17, cursor: 'pointer' }}>🙂</span>
+              />
+              <span onClick={addEmoji} style={{fontSize:17,cursor:\'pointer\'}}>🙂</span>
             </div>
+            {/* Send / Mic button */}
             {inputVal.trim()
               ? <button onClick={sendMsg} style={{
-                  width: 36, height: 36, borderRadius: '50%',
-                  background: 'linear-gradient(135deg,#60A5FA,#2563EB)',
-                  border: 'none', color: 'white', fontSize: 15, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 2px 10px rgba(37,99,235,0.35)'
+                  width:36,height:36,borderRadius:\'50%\',
+                  background:\'linear-gradient(135deg,#60A5FA,#2563EB)\',
+                  border:\'none\',color:\'white\',fontSize:15,cursor:\'pointer\',
+                  display:\'flex\',alignItems:\'center\',justifyContent:\'center\',
+                  boxShadow:\'0 2px 10px rgba(37,99,235,0.35)\'
                 }}>➤</button>
               : <div style={{
-                  width: 36, height: 36, borderRadius: '50%',
-                  background: 'linear-gradient(135deg,#60A5FA,#2563EB)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, cursor: 'pointer',
-                  boxShadow: '0 2px 10px rgba(37,99,235,0.35)'
+                  width:36,height:36,borderRadius:\'50%\',
+                  background:\'linear-gradient(135deg,#60A5FA,#2563EB)\',
+                  display:\'flex\',alignItems:\'center\',justifyContent:\'center\',
+                  fontSize:16,cursor:\'pointer\',
+                  boxShadow:\'0 2px 10px rgba(37,99,235,0.35)\'
                 }}>🎤</div>
             }
           </div>
-        </div>
-      </div>
+
+        </div>{/* end chat panel */}
+      </div>{/* end body */}
     </div>
   );
 }
+
 
 // ─── CREATE POST SHEET ────────────────────────────────────────────────────────
 function CreateSheet({ user, profile, onClose, onPosted }) {
