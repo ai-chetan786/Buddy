@@ -2,29 +2,31 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './BottomNav.css';
 
-// =====================================================
+// ============================================
 // GLOBAL BOTTOM NAV
-// =====================================================
-// Hidden on /feed because Feed has its OWN built-in
-// TikTok-style bottom nav with Messages inside it.
-// Hidden on /chat/* because chat is now inside /feed.
-// =====================================================
+// ============================================
+// HIDDEN on /feed — Feed has its OWN built-in
+// bottom nav (Home, Friends, +, Messages, Profile)
+// Also hidden on /chat/* — chat is inside Feed now
+// Also hidden on auth pages
+// ============================================
 
 const NAV_ITEMS = [
   { icon: '🏠', label: 'Home',    path: '/home' },
   { icon: '🤖', label: 'AI Chat', path: '/ai-chat' },
-  { icon: '📱', label: 'Feed',    path: '/feed' },
   { icon: '🎨', label: 'Create',  path: '/image-creator' },
+  { icon: '📰', label: 'News',    path: '/news' },
   { icon: '👤', label: 'Profile', path: '/profile' },
 ];
 
+// Pages where global BottomNav should NOT show
 const HIDDEN_ON = ['/', '/login', '/register', '/feed'];
 
 export default function BottomNav() {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const navigate  = useNavigate();
+  const location  = useLocation();
 
-  // Hide on feed (has own nav), auth pages, and old chat routes
+  // Hide on feed (has own nav), auth pages, old chat route
   const shouldHide =
     HIDDEN_ON.includes(location.pathname) ||
     location.pathname.startsWith('/chat');
