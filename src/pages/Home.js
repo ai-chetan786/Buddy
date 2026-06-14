@@ -5,7 +5,7 @@ import './Home.css';
 
 export default function Home() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const [user, setUser]       = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -27,7 +27,7 @@ export default function Home() {
 
   const loadProfile = async (userId) => {
     const { data } = await supabase
-      .from('profiles').select('full_name, avatar_url').eq('id', userId).single();
+      .from('profiles').select('full_name,avatar_url').eq('id', userId).single();
     setProfile(data);
     setLoading(false);
   };
@@ -54,18 +54,20 @@ export default function Home() {
     'Friend';
 
   // ── Feature cards ──
-  // "Friends Chat" removed — chat is now inside the Feed (Messages tab)
+  // "Friends Chat" removed — lives inside Feed → Messages tab
+  // "Messages"     removed — lives inside Feed → Messages tab
   const features = [
-    { icon: '🤖', title: 'Buddy AI Chat',    sub: 'Chat with your smart AI',    path: '/ai-chat',        cls: 'ai-card' },
-    { icon: '📱', title: 'Social Feed',       sub: 'Share posts with everyone',  path: '/feed',           cls: 'feed-card' },
-    { icon: '👤', title: 'My Profile',        sub: 'Edit your profile',          path: '/profile',        cls: 'profile-card' },
-    { icon: '🎨', title: 'AI Image Creator',  sub: 'Generate amazing images',    path: '/image-creator',  cls: 'image-card' },
-    { icon: '📰', title: 'News Feed',         sub: 'Latest news & updates',      path: '/news',           cls: 'news-card' },
+    { icon: '🤖', title: 'Buddy AI Chat',   sub: 'Chat with your smart AI',   path: '/ai-chat',       cls: 'ai-card'      },
+    { icon: '📱', title: 'Social Feed',      sub: 'Share posts with everyone', path: '/feed',          cls: 'feed-card'    },
+    { icon: '👤', title: 'My Profile',       sub: 'Edit your profile',         path: '/profile',       cls: 'profile-card' },
+    { icon: '🎨', title: 'AI Image Creator', sub: 'Generate amazing images',   path: '/image-creator', cls: 'image-card'   },
+    { icon: '📰', title: 'News Feed',        sub: 'Latest news & updates',     path: '/news',          cls: 'news-card'    },
   ];
 
   return (
     <div className="home-bg">
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div className="home-header">
         <div className="home-header-left">
           <div className="home-logo-small">🤖</div>
@@ -77,18 +79,18 @@ export default function Home() {
               ? <img src={profile.avatar_url} alt="profile" className="header-avatar" />
               : <div className="header-avatar-letter">{firstName[0]?.toUpperCase()}</div>}
           </button>
-          <button className="logout-btn" onClick={handleLogout}>🚪</button>
+          <button className="logout-btn" onClick={handleLogout} title="Logout">🚪</button>
         </div>
       </div>
 
-      {/* Welcome */}
+      {/* ── Welcome ── */}
       <div className="welcome-section">
         <div className="welcome-emoji">👋</div>
         <h1 className="welcome-title">Hey, {firstName}!</h1>
         <p className="welcome-sub">What would you like to do today?</p>
       </div>
 
-      {/* Feature Grid — 5 cards, no Friends Chat */}
+      {/* ── Feature Grid — 5 clean cards ── */}
       <div className="features-grid">
         {features.map((f) => (
           <div key={f.title} className={`feature-card ${f.cls}`} onClick={() => navigate(f.path)}>
@@ -105,6 +107,7 @@ export default function Home() {
       <div className="home-footer">
         <p>Logged in as <strong>{user?.email}</strong></p>
       </div>
+
     </div>
   );
 }
