@@ -15,7 +15,6 @@ export default function Home() {
       setUser(session.user);
       loadProfile(session.user.id);
     });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') navigate('/login');
       if (event === 'SIGNED_IN' && session) {
@@ -23,16 +22,12 @@ export default function Home() {
         loadProfile(session.user.id);
       }
     });
-
     return () => subscription.unsubscribe();
   }, [navigate]);
 
   const loadProfile = async (userId) => {
     const { data } = await supabase
-      .from('profiles')
-      .select('full_name, avatar_url')
-      .eq('id', userId)
-      .single();
+      .from('profiles').select('full_name, avatar_url').eq('id', userId).single();
     setProfile(data);
     setLoading(false);
   };
@@ -51,14 +46,27 @@ export default function Home() {
     );
   }
 
-  const firstName = profile?.full_name?.split(' ')[0]
-    || user?.user_metadata?.full_name?.split(' ')[0]
-    || user?.user_metadata?.name?.split(' ')[0]
-    || user?.email?.split('@')[0]
-    || 'Friend';
+  const firstName =
+    profile?.full_name?.split(' ')[0] ||
+    user?.user_metadata?.full_name?.split(' ')[0] ||
+    user?.user_metadata?.name?.split(' ')[0] ||
+    user?.email?.split('@')[0] ||
+    'Friend';
+
+  // ── Feature cards ──
+  // "Friends Chat" removed — chat is now inside the Feed (Messages tab)
+  const features = [
+    { icon: '🤖', title: 'Buddy AI Chat',    sub: 'Chat with your smart AI',    path: '/ai-chat',        cls: 'ai-card' },
+    { icon: '📱', title: 'Social Feed',       sub: 'Share posts with everyone',  path: '/feed',           cls: 'feed-card' },
+    { icon: '👤', title: 'My Profile',        sub: 'Edit your profile',          path: '/profile',        cls: 'profile-card' },
+    { icon: '🎨', title: 'AI Image Creator',  sub: 'Generate amazing images',    path: '/image-creator',  cls: 'image-card' },
+    { icon: '📰', title: 'News Feed',         sub: 'Latest news & updates',      path: '/news',           cls: 'news-card' },
+    { icon: '💬', title: 'Messages',          sub: 'Chat with friends in Feed',  path: '/feed',           cls: 'chat-card' },
+  ];
 
   return (
     <div className="home-bg">
+      {/* Header */}
       <div className="home-header">
         <div className="home-header-left">
           <div className="home-logo-small">🤖</div>
@@ -66,78 +74,33 @@ export default function Home() {
         </div>
         <div className="home-header-right">
           <button className="profile-icon-btn" onClick={() => navigate('/profile')}>
-            {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt="profile" className="header-avatar" />
-            ) : (
-              <div className="header-avatar-letter">
-                {(firstName)[0]?.toUpperCase()}
-              </div>
-            )}
+            {profile?.avatar_url
+              ? <img src={profile.avatar_url} alt="profile" className="header-avatar" />
+              : <div className="header-avatar-letter">{firstName[0]?.toUpperCase()}</div>}
           </button>
           <button className="logout-btn" onClick={handleLogout}>🚪</button>
         </div>
       </div>
 
+      {/* Welcome */}
       <div className="welcome-section">
         <div className="welcome-emoji">👋</div>
         <h1 className="welcome-title">Hey, {firstName}!</h1>
         <p className="welcome-sub">What would you like to do today?</p>
       </div>
 
+      {/* Feature Grid — 5 cards, no Friends Chat */}
       <div className="features-grid">
-        <div className="feature-card ai-card" onClick={() => navigate('/ai-chat')}>
-          <div className="feature-icon">🤖</div>
-          <div className="feature-info">
-            <h3>Buddy AI Chat</h3>
-            <p>Chat with your smart AI</p>
+        {features.map((f) => (
+          <div key={f.title} className={`feature-card ${f.cls}`} onClick={() => navigate(f.path)}>
+            <div className="feature-icon">{f.icon}</div>
+            <div className="feature-info">
+              <h3>{f.title}</h3>
+              <p>{f.sub}</p>
+            </div>
+            <div className="feature-arrow">→</div>
           </div>
-          <div className="feature-arrow">→</div>
-        </div>
-
-        <div className="feature-card feed-card" onClick={() => navigate('/feed')}>
-          <div className="feature-icon">📱</div>
-          <div className="feature-info">
-            <h3>Social Feed</h3>
-            <p>Share posts with everyone</p>
-          </div>
-          <div className="feature-arrow">→</div>
-        </div>
-
-        <div className="feature-card chat-card" onClick={() => navigate('/chat')}>
-          <div className="feature-icon">💬</div>
-          <div className="feature-info">
-            <h3>Friends Chat</h3>
-            <p>Message your friends</p>
-          </div>
-          <div className="feature-arrow">→</div>
-        </div>
-
-        <div className="feature-card profile-card" onClick={() => navigate('/profile')}>
-          <div className="feature-icon">👤</div>
-          <div className="feature-info">
-            <h3>My Profile</h3>
-            <p>Edit your profile</p>
-          </div>
-          <div className="feature-arrow">→</div>
-        </div>
-
-        <div className="feature-card image-card" onClick={() => navigate('/image-creator')}>
-          <div className="feature-icon">🎨</div>
-          <div className="feature-info">
-            <h3>AI Image Creator</h3>
-            <p>Generate amazing images</p>
-          </div>
-          <div className="feature-arrow">→</div>
-        </div>
-
-        <div className="feature-card news-card" onClick={() => navigate('/news')}>
-          <div className="feature-icon">📰</div>
-          <div className="feature-info">
-            <h3>News Feed</h3>
-            <p>Latest news & updates</p>
-          </div>
-          <div className="feature-arrow">→</div>
-        </div>
+        ))}
       </div>
 
       <div className="home-footer">
