@@ -1,56 +1,151 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 
 /* ============================================================
-   BUDDY AI — Feed.js  (Real accounts only — no fake data)
-   Stories   → real users from profiles table
-   Follow    → real users you are not yet following
-   Messages  → Buddy AI bot + real users you have conversations with
-   Posts     → real posts from Supabase
+   BUDDY AI — Feed.js
+   Fixes in this version:
+   1. Messages saved to Supabase (persist after refresh)
+   2. Stories only show if user manually added one
+   3. Add story button opens a real story creator
    ============================================================ */
 
 const G = {
   blue:'#2563EB', lightBlue:'#EFF6FF', sky:'#BFDBFE',
-  bg:'#F0F4FF', white:'#ffffff', gray:'#9CA3AF',
-  dark:'#1E293B', red:'#EF4444'
+  bg:'#F0F4FF', white:'#fff', gray:'#9CA3AF', dark:'#1E293B', red:'#EF4444'
 };
 const fmtN = n => n>=1e6?(n/1e6).toFixed(1)+'M':n>=1000?(n/1000).toFixed(1)+'K':String(n||0);
 const ago  = ts => { const s=Math.floor((Date.now()-new Date(ts))/1000); if(s<60)return'just now'; if(s<3600)return Math.floor(s/60)+'m ago'; if(s<86400)return Math.floor(s/3600)+'h ago'; return Math.floor(s/86400)+'d ago'; };
-const ini  = name => name?name.charAt(0).toUpperCase():'?';
-const GRAD = ['linear-gradient(135deg,#60A5FA,#2563EB)','linear-gradient(135deg,#F9A8D4,#EC4899)',
-  'linear-gradient(135deg,#86EFAC,#22C55E)','linear-gradient(135deg,#FDE68A,#F59E0B)',
-  'linear-gradient(135deg,#C4B5FD,#7C3AED)','linear-gradient(135deg,#FCA5A5,#EF4444)',
-  'linear-gradient(135deg,#6EE7B7,#059669)'];
+const ini  = n => n?n.charAt(0).toUpperCase():'?';
+const GRAD = [
+  'linear-gradient(135deg,#60A5FA,#2563EB)',
+  'linear-gradient(135deg,#F9A8D4,#EC4899)',
+  'linear-gradient(135deg,#86EFAC,#22C55E)',
+  'linear-gradient(135deg,#FDE68A,#F59E0B)',
+  'linear-gradient(135deg,#C4B5FD,#7C3AED)',
+  'linear-gradient(135deg,#FCA5A5,#EF4444)',
+  'linear-gradient(135deg,#6EE7B7,#059669)',
+];
 
-// ── TOAST ────────────────────────────────────
+// ── TOAST ─────────────────────────────────────
 function Toast({msg}){
   if(!msg)return null;
   return(
     <div style={{position:'fixed',top:20,left:'50%',transform:'translateX(-50%)',
       background:'#1e293b',color:'white',padding:'9px 20px',borderRadius:22,
-      fontSize:12.5,zIndex:9999,whiteSpace:'nowrap',
-      boxShadow:'0 4px 16px rgba(0,0,0,.25)',animation:'fadein .2s ease',pointerEvents:'none'}}>
+      fontSize:12.5,zIndex:9999,whiteSpace:'nowrap',pointerEvents:'none',
+      boxShadow:'0 4px 16px rgba(0,0,0,.25)',animation:'fadein .2s ease'}}>
       {msg}
     </div>
   );
 }
 
-// ── AVATAR ───────────────────────────────────
-function Avatar({profile,size=40,gradient,idx=0}){
-  const bg = gradient || GRAD[idx % GRAD.length];
+// ── AVATAR ────────────────────────────────────
+function Avatar({profile,size=40,idx=0}){
   return(
-    <div style={{width:size,height:size,borderRadius:'50%',background:bg,
+    <div style={{width:size,height:size,borderRadius:'50%',background:GRAD[idx%GRAD.length],
       display:'flex',alignItems:'center',justifyContent:'center',
       fontSize:size*0.35,fontWeight:700,color:'white',overflow:'hidden',flexShrink:0}}>
       {profile?.avatar_url
         ?<img src={profile.avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}}/>
-        :ini(profile?.full_name||profile?.username||'?')}
+        :ini(profile?.full_name||profile?.username)}
     </div>
   );
 }
 
-// ── STORY VIEWER ─────────────────────────────
+// ── ADD STORY SHEET ───────────────────────────
+// Opens when user taps "+ Your Story"
+function AddStorySheet({user,onClose,onAdded,showToast}){
+  const[caption,setCaption]=useState('');
+  const[image,setImage]=useState(null);
+  const[preview,setPreview]=useState(null);
+  const[saving,setSaving]=useState(false);
+  const fileRef=useRef(null);
+
+  const pickImg=e=>{
+    const f=e.target.files[0]; if(!f)return;
+    setImage(f); setPreview(URL.createObjectURL(f));
+  };
+
+  const submit=async()=>{
+    if(!caption.trim()&&!image){showToast('Please add a caption or photo');return;}
+    setSaving(true);
+    let imageUrl='';
+    if(image){
+      const ext=image.name.split('.').pop();
+      const path=`stories/${user.id}_${Date.now()}.${ext}`;
+      const{error:upErr}=await supabase.storage.from('posts').upload(path,image);
+      if(!upErr){
+        const{data:{publicUrl}}=supabase.storage.from('posts').getPublicUrl(path);
+        imageUrl=publicUrl;
+      }
+    }
+    const{data,error}=await supabase.from('stories').insert({
+      user_id:user.id, caption:caption.trim(), image_url:imageUrl
+    }).select('*,profiles(full_name,username,avatar_url)').single();
+    if(!error&&data){
+      onAdded(data);
+      showToast('✨ Story added! Visible for 24 hours');
+    } else {
+      showToast('❌ Could not add story');
+    }
+    setSaving(false); onClose();
+  };
+
+  return(
+    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{
+      position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:400,
+      display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+      <div style={{background:'white',borderRadius:'22px 22px 0 0',width:'100%',maxWidth:480,
+        padding:20,animation:'slideup .28s ease'}}>
+        <div style={{width:38,height:4,background:'#e2e8f0',borderRadius:2,margin:'0 auto 16px'}}/>
+        <div style={{fontSize:16,fontWeight:700,color:G.dark,marginBottom:14}}>📸 Add Your Story</div>
+        <p style={{fontSize:12,color:G.gray,marginBottom:14}}>
+          Your story will be visible to everyone for <strong>24 hours</strong>, then disappear automatically.
+        </p>
+
+        {/* Caption input */}
+        <textarea value={caption} onChange={e=>setCaption(e.target.value)}
+          placeholder="What's your story? Write something... ✨"
+          style={{width:'100%',minHeight:80,border:'1.5px solid #BFDBFE',borderRadius:14,
+            padding:'10px 14px',fontSize:13,outline:'none',resize:'none',
+            fontFamily:'inherit',color:G.dark,marginBottom:12}}/>
+
+        {/* Image preview */}
+        {preview&&(
+          <div style={{position:'relative',marginBottom:12}}>
+            <img src={preview} alt="" style={{width:'100%',maxHeight:200,objectFit:'cover',borderRadius:12}}/>
+            <button onClick={()=>{setImage(null);setPreview(null);}} style={{
+              position:'absolute',top:6,right:6,background:'rgba(0,0,0,.5)',color:'white',
+              border:'none',borderRadius:'50%',width:26,height:26,cursor:'pointer',fontSize:12}}>✕</button>
+          </div>
+        )}
+
+        {/* Add photo button */}
+        <button onClick={()=>fileRef.current.click()} style={{
+          width:'100%',padding:'11px',background:'#EFF6FF',
+          border:'1.5px dashed #BFDBFE',borderRadius:12,
+          color:G.blue,fontSize:13,fontWeight:600,cursor:'pointer',
+          fontFamily:'inherit',marginBottom:12}}>
+          📷 {image?'Change Photo':'Add Photo (optional)'}
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={pickImg}/>
+
+        {/* Post button */}
+        <button onClick={submit} disabled={saving||(!caption.trim()&&!image)} style={{
+          width:'100%',padding:'13px',
+          background:caption.trim()||image?'linear-gradient(135deg,#60A5FA,#2563EB)':'#e2e8f0',
+          color:caption.trim()||image?'white':'#9CA3AF',
+          border:'none',borderRadius:14,fontSize:14,fontWeight:700,
+          cursor:caption.trim()||image?'pointer':'default',fontFamily:'inherit'}}>
+          {saving?'⏳ Posting...':'✨ Share Story'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── STORY VIEWER ──────────────────────────────
 function StoryViewer({story,onClose}){
   const[prog,setProg]=useState(0);
   useEffect(()=>{
@@ -60,6 +155,7 @@ function StoryViewer({story,onClose}){
     return()=>{clearTimeout(t);clearInterval(iv);};
   },[story]);
   if(!story)return null;
+  const name=story.profiles?.full_name||story.profiles?.username||'User';
   return(
     <div style={{position:'fixed',inset:0,background:'black',zIndex:500,display:'flex',flexDirection:'column'}}>
       <div style={{display:'flex',gap:4,padding:'48px 14px 6px'}}>
@@ -68,24 +164,39 @@ function StoryViewer({story,onClose}){
         </div>
       </div>
       <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',
-        background:'linear-gradient(180deg,#1e3a8a,#2563eb,#60a5fa)',position:'relative'}}>
-        <div style={{position:'absolute',top:10,left:14,display:'flex',alignItems:'center',gap:9}}>
-          <Avatar profile={story.profile} size={38} idx={story.idx}/>
+        background:story.image_url?'black':'linear-gradient(180deg,#1e3a8a,#2563eb,#60a5fa)',
+        position:'relative',overflow:'hidden'}}>
+        {story.image_url&&(
+          <img src={story.image_url} alt="" style={{position:'absolute',inset:0,
+            width:'100%',height:'100%',objectFit:'cover',opacity:.85}}/>
+        )}
+        {/* User info */}
+        <div style={{position:'absolute',top:12,left:14,display:'flex',alignItems:'center',gap:9,zIndex:2}}>
+          <Avatar profile={story.profiles} size={38} idx={0}/>
           <div>
-            <div style={{color:'white',fontWeight:700,fontSize:13}}>{story.profile?.full_name||story.profile?.username||'User'}</div>
-            <div style={{color:'rgba(255,255,255,.65)',fontSize:10}}>Just now</div>
+            <div style={{color:'white',fontWeight:700,fontSize:13}}>{name}</div>
+            <div style={{color:'rgba(255,255,255,.7)',fontSize:10}}>{ago(story.created_at)}</div>
           </div>
         </div>
-        <div style={{fontSize:80,animation:'floaty 3s ease-in-out infinite'}}>🌟</div>
-        <div onClick={onClose} style={{position:'absolute',top:10,right:14,color:'white',fontSize:24,cursor:'pointer'}}>✕</div>
-        <div style={{position:'absolute',bottom:90,left:'50%',transform:'translateX(-50%)',
-          color:'white',fontSize:15,fontWeight:700,textAlign:'center',
-          width:'80%',textShadow:'0 2px 8px rgba(0,0,0,.5)'}}>
-          {story.profile?.full_name||'User'}'s story ✨
-        </div>
+        {/* Close */}
+        <div onClick={onClose} style={{position:'absolute',top:12,right:14,color:'white',
+          fontSize:24,cursor:'pointer',zIndex:2}}>✕</div>
+        {/* Caption */}
+        {story.caption&&(
+          <div style={{position:'absolute',bottom:90,left:'50%',transform:'translateX(-50%)',
+            color:'white',fontSize:16,fontWeight:700,textAlign:'center',
+            width:'85%',textShadow:'0 2px 8px rgba(0,0,0,.6)',zIndex:2,
+            background:'rgba(0,0,0,.3)',borderRadius:12,padding:'10px 14px'}}>
+            {story.caption}
+          </div>
+        )}
+        {!story.image_url&&(
+          <div style={{fontSize:70,animation:'floaty 3s ease-in-out infinite',zIndex:2}}>✨</div>
+        )}
       </div>
-      <div style={{padding:'10px 14px 30px',display:'flex',gap:9,background:'black'}}>
-        <input placeholder={`Reply to ${story.profile?.full_name||'User'}...`}
+      {/* Reply bar */}
+      <div style={{padding:'10px 14px 30px',display:'flex',gap:9,background:'rgba(0,0,0,.8)'}}>
+        <input placeholder={`Reply to ${name}...`}
           style={{flex:1,background:'rgba(255,255,255,.1)',border:'1px solid rgba(255,255,255,.3)',
             color:'white',borderRadius:22,padding:'9px 14px',fontSize:12.5,outline:'none'}}/>
         <span style={{color:'white',fontSize:22,cursor:'pointer',alignSelf:'center'}}>➤</span>
@@ -111,7 +222,7 @@ function CommentsSheet({postId,user,onClose}){
     const{data,error}=await supabase.from('comments')
       .insert({post_id:postId,user_id:user.id,content:text.trim()})
       .select('*,profiles(full_name,username,avatar_url)').single();
-    if(!error&&data) setComments(c=>[...c,data]);
+    if(!error&&data)setComments(c=>[...c,data]);
     setText('');setSending(false);
   };
   return(
@@ -131,16 +242,15 @@ function CommentsSheet({postId,user,onClose}){
           <div key={c.id||i} style={{display:'flex',gap:9,padding:'8px 0',borderBottom:'1px solid #f1f5f9'}}>
             <Avatar profile={c.profiles} size={34} idx={i}/>
             <div style={{flex:1}}>
-              <div style={{fontSize:11,fontWeight:700,color:G.dark}}>{c.profiles?.full_name||c.profiles?.username||'User'}</div>
+              <div style={{fontSize:11,fontWeight:700,color:G.dark}}>
+                {c.profiles?.full_name||c.profiles?.username||'User'}</div>
               <div style={{fontSize:12.5,color:'#475569',marginTop:2}}>{c.content}</div>
             </div>
-            <div style={{fontSize:17,cursor:'pointer',alignSelf:'center'}}>🤍</div>
           </div>
         ))}
         <div style={{display:'flex',gap:8,alignItems:'center',marginTop:10}}>
           <input value={text} onChange={e=>setText(e.target.value)}
-            onKeyDown={e=>e.key==='Enter'&&send()}
-            placeholder="Add a comment..."
+            onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Add a comment..."
             style={{flex:1,border:'1.5px solid #BFDBFE',borderRadius:18,
               padding:'9px 14px',fontSize:12.5,outline:'none',fontFamily:'inherit'}}/>
           <button onClick={send} disabled={sending} style={{width:36,height:36,
@@ -152,69 +262,106 @@ function CommentsSheet({postId,user,onClose}){
   );
 }
 
-// ── MESSAGES SCREEN (real users + Buddy bot) ──
+// ── MESSAGES SCREEN (persistent — saved to Supabase) ──────────
 function MessagesScreen({onClose,currentUser,allUsers,showToast}){
-  // Buddy AI is always the first contact (bot)
-  // Then real users from Supabase
-  const buddyContact={
-    id:'buddy',name:'Buddy AI',username:'buddy_ai',
-    isBot:true,status:'Online',verified:true,
-    bg:'linear-gradient(135deg,#60A5FA,#2563EB)',emoji:'🤖',
-    initMsgs:[
-      {me:false,txt:"Hello! 👋 How's it going?"},
-      {me:true, txt:"Hi Buddy! I'm good. Just chilling at home. 👋"},
-      {me:false,txt:"That sounds like fun! 🎉 Want me to find some funny memes?"},
-      {me:true, txt:"Sure, let's see some memes!"},
-      {me:false,txt:"I found a good one for you! 😄",meme:true},
-    ]
-  };
+  // Buddy AI is always first contact (bot — messages stored in state only, not DB)
+  // Real users — messages saved to direct_messages table
+  const buddyBot={id:'buddy',name:'Buddy AI',isBot:true,status:'Online',verified:true};
 
-  // Build contacts: Buddy first, then real users
-  const contacts=[buddyContact,...(allUsers||[]).map((u,i)=>({
-    id:u.id, name:u.full_name||u.username||'User',
-    username:u.username, isBot:false,
-    status:i%2===0?'Online':'Offline',
-    verified:false,
-    bg:GRAD[(i+1)%GRAD.length],
-    profile:u,
-    initMsgs:[{me:false,txt:`Hey! I'm ${u.full_name||u.username||'User'} 👋`}]
-  }))];
-
+  const contacts=[buddyBot,...(allUsers||[])];
   const[active,setActive]=useState('buddy');
-  const[chatData,setChatData]=useState(()=>{
-    const d={};
-    contacts.forEach(c=>{d[c.id]=[...(c.initMsgs||[])];});
-    return d;
-  });
+  const[messages,setMessages]=useState([]); // messages for current contact
+  const[botMsgs,setBotMsgs]=useState([     // Buddy AI messages (state only)
+    {id:'b1',sender_id:'buddy',content:"Hello! 👋 How's it going?",created_at:new Date(Date.now()-60000).toISOString()},
+  ]);
   const[inputVal,setInputVal]=useState('');
   const[typing,setTyping]=useState(false);
+  const[loading,setLoading]=useState(false);
   const msgsRef=useRef(null);
-  const ac=contacts.find(c=>c.id===active)||contacts[0];
+  const subRef=useRef(null);
 
-  useEffect(()=>{
+  const ac=contacts.find(c=>c.id===active)||buddyBot;
+
+  // Scroll to bottom whenever messages change
+  const scrollBottom=useCallback(()=>{
     setTimeout(()=>{ if(msgsRef.current) msgsRef.current.scrollTop=msgsRef.current.scrollHeight; },60);
-  },[active,chatData]);
+  },[]);
 
-  const sendMsg=()=>{
+  useEffect(()=>{ scrollBottom(); },[messages,botMsgs,typing]);
+
+  // Load messages from Supabase when switching to a real user
+  useEffect(()=>{
+    if(active==='buddy'){
+      // Unsubscribe previous realtime
+      if(subRef.current){ subRef.current.unsubscribe(); subRef.current=null; }
+      return;
+    }
+    const loadMessages=async()=>{
+      setLoading(true);
+      // Load conversation history between me and this user
+      const{data}=await supabase.from('direct_messages')
+        .select('*')
+        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${active}),and(sender_id.eq.${active},receiver_id.eq.${currentUser.id})`)
+        .order('created_at',{ascending:true});
+      setMessages(data||[]);
+      setLoading(false);
+    };
+    loadMessages();
+
+    // Subscribe to new real-time messages for this conversation
+    if(subRef.current){ subRef.current.unsubscribe(); }
+    const channel=supabase.channel(`dm_${currentUser.id}_${active}`)
+      .on('postgres_changes',{
+        event:'INSERT',schema:'public',table:'direct_messages',
+        filter:`receiver_id=eq.${currentUser.id}`
+      },(payload)=>{
+        // Only add if it's from current active contact
+        if(payload.new.sender_id===active){
+          setMessages(m=>[...m,payload.new]);
+        }
+      }).subscribe();
+    subRef.current=channel;
+
+    return()=>{ if(subRef.current){ subRef.current.unsubscribe(); subRef.current=null; } };
+  },[active,currentUser.id]);
+
+  const sendMsg=async()=>{
     if(!inputVal.trim())return;
-    const txt=inputVal.trim(); setInputVal('');
-    setChatData(d=>({...d,[active]:[...d[active],{me:true,txt}]}));
-    // Only bot replies automatically
-    if(ac.isBot){
+    const txt=inputVal.trim();
+    setInputVal('');
+
+    if(active==='buddy'){
+      // Bot — just store in state
+      setBotMsgs(m=>[...m,{id:'u'+Date.now(),sender_id:currentUser.id,content:txt,created_at:new Date().toISOString()}]);
       setTyping(true);
       const pool=["That's great! 😊 How can I help?","Awesome! I'm always here 🤖💙",
-        "Interesting! Want me to search something? 🔍","Great idea! 🚀","Tell me more! 😊"];
+        "Interesting! Want me to search? 🔍","Tell me more! 😊","Great idea! 🚀",
+        "I'm here for you buddy! 💙","Let me think about that... 🤔"];
       setTimeout(()=>{
-        const reply=pool[Math.floor(Math.random()*pool.length)];
-        setChatData(d=>({...d,[active]:[...d[active],{me:false,txt:reply}]}));
+        setBotMsgs(m=>[...m,{id:'b'+Date.now(),sender_id:'buddy',
+          content:pool[Math.floor(Math.random()*pool.length)],created_at:new Date().toISOString()}]);
         setTyping(false);
       },1000+Math.random()*800);
+    } else {
+      // Real user — save to Supabase direct_messages table
+      const newMsg={sender_id:currentUser.id,receiver_id:active,content:txt};
+      const{data,error}=await supabase.from('direct_messages').insert(newMsg).select().single();
+      if(!error&&data){
+        setMessages(m=>[...m,data]);
+      } else {
+        showToast('❌ Message not sent. Try again.');
+      }
     }
   };
 
+  // Decide which messages to show
+  const displayMsgs=active==='buddy'?botMsgs:messages;
+  const isMe=id=>id===currentUser.id;
+
   return(
     <div style={{position:'fixed',inset:0,zIndex:200,background:G.bg,display:'flex',
-      flexDirection:'column',fontFamily:"'Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif"}}>
+      flexDirection:'column',fontFamily:"'Segoe UI',-apple-system,sans-serif"}}>
+
       {/* Blue top bar */}
       <div style={{flexShrink:0,background:'linear-gradient(135deg,#2563EB,#1D4ED8)',
         padding:'48px 16px 12px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
@@ -222,152 +369,149 @@ function MessagesScreen({onClose,currentUser,allUsers,showToast}){
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           <div style={{width:30,height:30,background:'white',borderRadius:'50%',
             display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>🤖</div>
-          <span style={{fontSize:17,fontWeight:800,color:'white'}}>Buddy AI</span>
+          <span style={{fontSize:17,fontWeight:800,color:'white'}}>Messages</span>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:12}}>
-          <div style={{position:'relative',cursor:'pointer'}}>
-            <span style={{fontSize:20,color:'white'}}>🔔</span>
-            <div style={{position:'absolute',top:-4,right:-4,background:G.red,color:'white',
-              fontSize:8,width:14,height:14,borderRadius:'50%',
-              display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>3</div>
-          </div>
-          <div style={{width:30,height:30,borderRadius:'50%',
-            background:'linear-gradient(135deg,#93C5FD,#1D4ED8)',
-            display:'flex',alignItems:'center',justifyContent:'center',
-            color:'white',fontSize:13,fontWeight:700,border:'2px solid rgba(255,255,255,.5)'}}>
-            {currentUser?.email?.charAt(0).toUpperCase()||'C'}
-          </div>
-        </div>
+        <div style={{width:30}}/>
       </div>
 
       {/* Body */}
       <div style={{flex:1,display:'flex',overflow:'hidden'}}>
-        {/* Sidebar — real users */}
+
+        {/* LEFT — contacts sidebar */}
         <div style={{width:108,flexShrink:0,background:'white',
           borderRight:'1px solid #e8f0fe',overflowY:'auto',scrollbarWidth:'none'}}>
-          {contacts.map((c,i)=>(
-            <div key={c.id} onClick={()=>setActive(c.id)} style={{
-              display:'flex',flexDirection:'column',alignItems:'center',
-              gap:5,padding:'12px 6px',cursor:'pointer',
-              borderBottom:'1px solid #f1f5f9',
-              background:active===c.id?'#EFF6FF':'white',
-              borderLeft:active===c.id?'3px solid #2563EB':'3px solid transparent',
-              transition:'background .15s'}}>
+
+          {/* Buddy AI */}
+          <div onClick={()=>setActive('buddy')} style={{
+            display:'flex',flexDirection:'column',alignItems:'center',gap:5,
+            padding:'12px 6px',cursor:'pointer',borderBottom:'1px solid #f1f5f9',
+            background:active==='buddy'?'#EFF6FF':'white',
+            borderLeft:active==='buddy'?'3px solid #2563EB':'3px solid transparent'}}>
+            <div style={{position:'relative'}}>
+              <div style={{width:48,height:48,borderRadius:'50%',
+                background:'linear-gradient(135deg,#60A5FA,#2563EB)',
+                display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>🤖</div>
+              <div style={{position:'absolute',bottom:1,right:1,width:13,height:13,
+                background:'#22C55E',borderRadius:'50%',border:'2px solid white'}}/>
+            </div>
+            <div style={{fontSize:10.5,fontWeight:600,color:G.dark}}>Buddy AI</div>
+            <div style={{fontSize:9,color:'#22C55E'}}>Online</div>
+          </div>
+
+          {/* Real users */}
+          {(allUsers||[]).map((u,i)=>(
+            <div key={u.id} onClick={()=>setActive(u.id)} style={{
+              display:'flex',flexDirection:'column',alignItems:'center',gap:5,
+              padding:'12px 6px',cursor:'pointer',borderBottom:'1px solid #f1f5f9',
+              background:active===u.id?'#EFF6FF':'white',
+              borderLeft:active===u.id?'3px solid #2563EB':'3px solid transparent'}}>
               <div style={{position:'relative'}}>
-                {c.isBot
-                  ?<div style={{width:48,height:48,borderRadius:'50%',
-                      background:'linear-gradient(135deg,#60A5FA,#2563EB)',
-                      display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,
-                      boxShadow:active===c.id?'0 2px 10px rgba(37,99,235,.3)':'none'}}>🤖</div>
-                  :<Avatar profile={c.profile} size={48} idx={i}/>
-                }
+                <Avatar profile={u} size={48} idx={i+1}/>
                 <div style={{position:'absolute',bottom:1,right:1,width:13,height:13,
-                  background:c.status==='Online'?'#22C55E':'#9CA3AF',
+                  background:i%2===0?'#22C55E':'#9CA3AF',
                   borderRadius:'50%',border:'2px solid white'}}/>
               </div>
-              <div style={{fontSize:10.5,fontWeight:600,color:G.dark,textAlign:'center',
+              <div style={{fontSize:10,fontWeight:600,color:G.dark,textAlign:'center',
                 maxWidth:90,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                {c.name}</div>
-              <div style={{fontSize:9,fontWeight:500,color:c.status==='Online'?'#22C55E':G.gray}}>
-                {c.status}</div>
+                {u.full_name||u.username||'User'}</div>
             </div>
           ))}
-          {contacts.length===1&&(
-            <div style={{padding:'14px 8px',textAlign:'center',fontSize:10,color:G.gray,lineHeight:1.5}}>
-              No other users yet.<br/>Invite friends! 🎉
+
+          {(allUsers||[]).length===0&&(
+            <div style={{padding:'14px 8px',textAlign:'center',fontSize:10,color:G.gray,lineHeight:1.6}}>
+              No friends yet 😊<br/>Share your app!
             </div>
           )}
         </div>
 
-        {/* Chat panel */}
+        {/* RIGHT — chat panel */}
         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'#EFF6FF'}}>
+
           {/* Chat header */}
           <div style={{flexShrink:0,background:'white',padding:'10px 14px',
             display:'flex',alignItems:'center',justifyContent:'space-between',
             borderBottom:'1px solid #e8f0fe'}}>
             <div style={{display:'flex',alignItems:'center',gap:9}}>
-              <div style={{position:'relative'}}>
-                {ac.isBot
-                  ?<div style={{width:40,height:40,borderRadius:'50%',
+              {active==='buddy'
+                ?<div style={{position:'relative'}}>
+                    <div style={{width:40,height:40,borderRadius:'50%',
                       background:'linear-gradient(135deg,#60A5FA,#2563EB)',
                       display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>🤖</div>
-                  :<Avatar profile={ac.profile} size={40} idx={contacts.indexOf(ac)}/>
-                }
-                <div style={{position:'absolute',bottom:1,right:1,width:11,height:11,
-                  background:ac.status==='Online'?'#22C55E':'#9CA3AF',
-                  borderRadius:'50%',border:'2px solid white'}}/>
-              </div>
+                    <div style={{position:'absolute',bottom:1,right:1,width:11,height:11,
+                      background:'#22C55E',borderRadius:'50%',border:'2px solid white'}}/>
+                  </div>
+                :<div style={{position:'relative'}}>
+                    <Avatar profile={allUsers.find(u=>u.id===active)} size={40}
+                      idx={(allUsers.findIndex(u=>u.id===active)+1)}/>
+                    <div style={{position:'absolute',bottom:1,right:1,width:11,height:11,
+                      background:'#9CA3AF',borderRadius:'50%',border:'2px solid white'}}/>
+                  </div>
+              }
               <div>
                 <div style={{fontSize:14,fontWeight:700,color:G.dark,display:'flex',alignItems:'center',gap:4}}>
-                  {ac.name}
-                  {ac.verified&&<span style={{color:G.blue,fontSize:12}}>✔</span>}
+                  {active==='buddy'?'Buddy AI':(allUsers.find(u=>u.id===active)?.full_name||'User')}
+                  {active==='buddy'&&<span style={{color:G.blue,fontSize:12}}>✔</span>}
                 </div>
-                <div style={{fontSize:10,color:ac.status==='Online'?'#22C55E':G.gray}}>
-                  {ac.isBot?'AI Assistant — always online':ac.status}</div>
+                <div style={{fontSize:10,color:'#22C55E'}}>
+                  {active==='buddy'?'AI Assistant — always here':'Online'}
+                </div>
               </div>
             </div>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <div style={{display:'flex',gap:8}}>
               <div onClick={()=>showToast('📞 Calling...')} style={{width:32,height:32,borderRadius:'50%',
                 background:'linear-gradient(135deg,#F9A8D4,#EC4899)',
                 display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,cursor:'pointer'}}>📞</div>
               <div onClick={()=>showToast('📹 Video call...')} style={{width:32,height:32,borderRadius:'50%',
                 background:'linear-gradient(135deg,#C4B5FD,#7C3AED)',
                 display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,cursor:'pointer'}}>📹</div>
-              <span style={{fontSize:18,color:G.gray}}>···</span>
             </div>
           </div>
 
-          {/* Messages */}
+          {/* Messages area */}
           <div ref={msgsRef} style={{flex:1,overflowY:'auto',padding:'12px 10px',
             display:'flex',flexDirection:'column',gap:10,scrollbarWidth:'none'}}>
-            {(chatData[active]||[]).map((m,i)=>(
-              <div key={i} style={{display:'flex',alignItems:'flex-end',gap:7,
-                flexDirection:m.me?'row-reverse':'row'}}>
-                {!m.me&&(
-                  ac.isBot
-                    ?<div style={{width:28,height:28,borderRadius:'50%',
-                        background:'linear-gradient(135deg,#60A5FA,#2563EB)',
-                        display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0}}>🤖</div>
-                    :<Avatar profile={ac.profile} size={28} idx={contacts.indexOf(ac)}/>
-                )}
-                {m.meme?(
-                  <div style={{display:'flex',flexDirection:'column',gap:6,maxWidth:'72%'}}>
-                    <div style={{background:'white',padding:'9px 13px',borderRadius:18,
-                      borderBottomLeftRadius:4,fontSize:12.5,color:G.dark,
-                      boxShadow:'0 1px 6px rgba(37,99,235,.08)'}}>{m.txt}</div>
-                    <div style={{background:'linear-gradient(135deg,#dbeafe,#bfdbfe,#93c5fd)',
-                      borderRadius:14,overflow:'hidden',maxWidth:210,
-                      boxShadow:'0 3px 12px rgba(37,99,235,.2)'}}>
-                      <div style={{padding:'10px 10px 6px',fontSize:11,color:'#1e40af',fontWeight:500,lineHeight:1.4}}>
-                        When you finish a difficult task and walk into the room:</div>
-                      <div style={{display:'flex',alignItems:'center',justifyContent:'center',
-                        padding:'12px 8px',fontSize:52,
-                        background:'linear-gradient(135deg,#bfdbfe,#93c5fd)',position:'relative'}}>
-                        🤖
-                        <div style={{position:'absolute',bottom:8,left:10,width:26,height:26,
-                          background:'rgba(37,99,235,.85)',borderRadius:'50%',
+
+            {loading&&(
+              <div style={{textAlign:'center',color:G.gray,fontSize:12,padding:20}}>
+                Loading messages...
+              </div>
+            )}
+
+            {!loading&&displayMsgs.length===0&&active!=='buddy'&&(
+              <div style={{textAlign:'center',color:G.gray,fontSize:12,padding:'30px 20px'}}>
+                <div style={{fontSize:36,marginBottom:8}}>👋</div>
+                Say hi to {allUsers.find(u=>u.id===active)?.full_name||'your friend'}!
+              </div>
+            )}
+
+            {displayMsgs.map((m,i)=>{
+              const mine=isMe(m.sender_id);
+              return(
+                <div key={m.id||i} style={{display:'flex',alignItems:'flex-end',gap:7,
+                  flexDirection:mine?'row-reverse':'row'}}>
+                  {!mine&&(
+                    active==='buddy'
+                      ?<div style={{width:28,height:28,borderRadius:'50%',
+                          background:'linear-gradient(135deg,#60A5FA,#2563EB)',
                           display:'flex',alignItems:'center',justifyContent:'center',
-                          color:'white',fontSize:11}}>▶</div>
-                      </div>
-                      <div style={{background:'rgba(30,58,138,.85)',color:'white',
-                        padding:'7px 10px',fontSize:12,fontWeight:700,textAlign:'center'}}>
-                        I'm doing my best</div>
-                    </div>
-                  </div>
-                ):(
+                          fontSize:14,flexShrink:0}}>🤖</div>
+                      :<Avatar profile={allUsers.find(u=>u.id===active)} size={28}
+                          idx={allUsers.findIndex(u=>u.id===active)+1}/>
+                  )}
                   <div style={{maxWidth:'70%',padding:'9px 13px',borderRadius:18,
                     fontSize:12.5,lineHeight:1.5,wordBreak:'break-word',
-                    ...(m.me
+                    ...(mine
                       ?{background:'linear-gradient(135deg,#3B82F6,#2563EB)',color:'white',
                          borderBottomRightRadius:4,boxShadow:'0 2px 10px rgba(37,99,235,.3)'}
                       :{background:'white',color:G.dark,
                          borderBottomLeftRadius:4,boxShadow:'0 1px 6px rgba(37,99,235,.08)'})}}>
-                    {m.txt}
-                    {m.me&&<span style={{fontSize:10,opacity:.75,float:'right',marginLeft:6,marginTop:3}}>✓✓</span>}
+                    {m.content}
+                    {mine&&<span style={{fontSize:10,opacity:.75,float:'right',marginLeft:6,marginTop:3}}>✓✓</span>}
                   </div>
-                )}
-              </div>
-            ))}
+                </div>
+              );
+            })}
+
             {typing&&(
               <div style={{display:'flex',alignItems:'flex-end',gap:7}}>
                 <div style={{width:28,height:28,borderRadius:'50%',
@@ -385,21 +529,15 @@ function MessagesScreen({onClose,currentUser,allUsers,showToast}){
             )}
           </div>
 
-          {/* Input */}
+          {/* Input bar */}
           <div style={{flexShrink:0,background:'white',padding:'10px 12px 20px',
             display:'flex',alignItems:'center',gap:8,borderTop:'1px solid #e8f0fe'}}>
-            {['📎','🖼️'].map((ic,i)=>(
-              <div key={i} onClick={()=>showToast(ic+' coming soon')} style={{
-                width:30,height:30,borderRadius:8,background:'#EFF6FF',
-                display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,cursor:'pointer'}}>
-                {ic}</div>
-            ))}
             <div style={{flex:1,display:'flex',alignItems:'center',
               background:'#F1F5FF',borderRadius:22,padding:'8px 12px',gap:6,
               border:'1.5px solid #e8f0fe'}}>
               <input value={inputVal} onChange={e=>setInputVal(e.target.value)}
                 onKeyDown={e=>e.key==='Enter'&&sendMsg()}
-                placeholder={ac.isBot?'Ask Buddy anything...':'Type a message...'}
+                placeholder={active==='buddy'?'Ask Buddy anything...':'Type a message...'}
                 style={{flex:1,border:'none',background:'transparent',
                   fontSize:12.5,color:G.dark,outline:'none',fontFamily:'inherit'}}/>
               <span onClick={()=>{
@@ -426,7 +564,7 @@ function MessagesScreen({onClose,currentUser,allUsers,showToast}){
   );
 }
 
-// ── CREATE POST SHEET ─────────────────────────
+// ── CREATE POST ────────────────────────────────
 function CreateSheet({user,onClose,onPosted,showToast}){
   const[text,setText]=useState('');
   const[image,setImage]=useState(null);
@@ -435,17 +573,13 @@ function CreateSheet({user,onClose,onPosted,showToast}){
   const fileRef=useRef(null);
   const pickImg=e=>{const f=e.target.files[0];if(!f)return;setImage(f);setPreview(URL.createObjectURL(f));};
   const submit=async()=>{
-    if(!text.trim()||posting)return;
-    setPosting(true);
+    if(!text.trim()||posting)return; setPosting(true);
     let imageUrl='';
     if(image){
       const ext=image.name.split('.').pop();
       const path=`posts/${user.id}_${Date.now()}.${ext}`;
       const{error:upErr}=await supabase.storage.from('posts').upload(path,image);
-      if(!upErr){
-        const{data:{publicUrl}}=supabase.storage.from('posts').getPublicUrl(path);
-        imageUrl=publicUrl;
-      }
+      if(!upErr){const{data:{publicUrl}}=supabase.storage.from('posts').getPublicUrl(path); imageUrl=publicUrl;}
     }
     const{data,error}=await supabase.from('posts')
       .insert({user_id:user.id,content:text.trim(),image_url:imageUrl,likes_count:0,comments_count:0})
@@ -464,8 +598,7 @@ function CreateSheet({user,onClose,onPosted,showToast}){
         <textarea value={text} onChange={e=>setText(e.target.value)}
           placeholder="What's on your mind? Share with the world! 🌍"
           style={{width:'100%',minHeight:90,border:'1.5px solid #BFDBFE',borderRadius:14,
-            padding:'10px 14px',fontSize:13,outline:'none',resize:'none',
-            fontFamily:'inherit',color:G.dark}}/>
+            padding:'10px 14px',fontSize:13,outline:'none',resize:'none',fontFamily:'inherit',color:G.dark}}/>
         {preview&&(
           <div style={{position:'relative',marginTop:10}}>
             <img src={preview} alt="" style={{width:'100%',maxHeight:200,objectFit:'cover',borderRadius:12}}/>
@@ -475,11 +608,10 @@ function CreateSheet({user,onClose,onPosted,showToast}){
           </div>
         )}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginTop:14}}>
-          {[['📸','Photo',()=>fileRef.current.click()],['🎵','Music',()=>showToast('🎵 Coming soon')],
-            ['🤖','AI Art',()=>showToast('🤖 Coming soon')],['📰','News',()=>showToast('📰 Coming soon')]].map(([ic,lb,fn])=>(
+          {[['📸','Photo',()=>fileRef.current.click()],['🎵','Music',()=>showToast('🎵 Soon')],
+            ['🤖','AI Art',()=>showToast('🤖 Soon')],['📰','News',()=>showToast('📰 Soon')]].map(([ic,lb,fn])=>(
             <div key={lb} onClick={fn} style={{background:'#EFF6FF',borderRadius:14,padding:'18px 10px',
-              display:'flex',flexDirection:'column',alignItems:'center',gap:7,cursor:'pointer',
-              border:'2px solid transparent',transition:'all .2s'}}>
+              display:'flex',flexDirection:'column',alignItems:'center',gap:7,cursor:'pointer'}}>
               <div style={{fontSize:30}}>{ic}</div>
               <div style={{fontSize:12,fontWeight:600,color:G.dark}}>{lb}</div>
             </div>
@@ -490,8 +622,7 @@ function CreateSheet({user,onClose,onPosted,showToast}){
           width:'100%',marginTop:14,padding:'13px',
           background:text.trim()?'linear-gradient(135deg,#60A5FA,#2563EB)':'#e2e8f0',
           color:text.trim()?'white':'#9CA3AF',border:'none',borderRadius:14,
-          fontSize:14,fontWeight:700,cursor:text.trim()?'pointer':'default',
-          fontFamily:'inherit',transition:'all .2s'}}>
+          fontSize:14,fontWeight:700,cursor:text.trim()?'pointer':'default',fontFamily:'inherit'}}>
           {posting?'⏳ Posting...':'🚀 Share Post'}
         </button>
       </div>
@@ -513,15 +644,14 @@ function PostCard({post,currentUserId,isLiked,onLike,onComment,onDelete,showToas
           <Avatar profile={post.profiles} size={40} idx={idx}/>
           <div>
             <div style={{fontSize:13.5,fontWeight:700,color:G.dark}}>
-              {post.profiles?.full_name||post.profiles?.username||'User'}
-            </div>
+              {post.profiles?.full_name||post.profiles?.username||'User'}</div>
             <div style={{fontSize:10,color:G.gray,marginTop:1}}>{ago(post.created_at)}</div>
           </div>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           {isOwn&&<button onClick={()=>onDelete(post.id)} style={{background:'none',border:'none',
             cursor:'pointer',color:G.red,fontSize:16,padding:4}}>🗑️</button>}
-          <div style={{color:G.gray,fontSize:18,cursor:'pointer'}}>···</div>
+          <div style={{color:G.gray,fontSize:18}}>···</div>
         </div>
       </div>
       {post.content&&(
@@ -536,16 +666,14 @@ function PostCard({post,currentUserId,isLiked,onLike,onComment,onDelete,showToas
         </div>
       )}
       <div style={{padding:'9px 13px 11px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-        <div style={{display:'flex',alignItems:'center',gap:14}}>
+        <div style={{display:'flex',gap:14}}>
           <div onClick={handleLike} style={{display:'flex',alignItems:'center',gap:4,
             cursor:'pointer',color:liked?G.red:G.gray,fontSize:12.5}}>
-            <span style={{fontSize:19}}>{liked?'❤️':'🤍'}</span>
-            <span>{fmtN(likeCount)}</span>
+            <span style={{fontSize:19}}>{liked?'❤️':'🤍'}</span><span>{fmtN(likeCount)}</span>
           </div>
           <div onClick={()=>onComment(post.id)} style={{display:'flex',alignItems:'center',gap:4,
             cursor:'pointer',color:G.gray,fontSize:12.5}}>
-            <span style={{fontSize:19}}>💬</span>
-            <span>{post.comments_count||0}</span>
+            <span style={{fontSize:19}}>💬</span><span>{post.comments_count||0}</span>
           </div>
         </div>
         <div style={{display:'flex',gap:10}}>
@@ -557,11 +685,10 @@ function PostCard({post,currentUserId,isLiked,onLike,onComment,onDelete,showToas
   );
 }
 
-// ── FOLLOW SUGGESTIONS (real users) ───────────
+// ── FOLLOW SUGGESTIONS ────────────────────────
 function FollowSuggestions({users,currentUserId,following,onFollow}){
-  // Only show users we are not already following and not ourselves
   const suggestions=users.filter(u=>u.id!==currentUserId&&!following[u.id]);
-  if(suggestions.length===0)return null;
+  if(!suggestions.length)return null;
   return(
     <div style={{padding:'10px 12px',background:G.bg}}>
       <div style={{fontSize:14,fontWeight:700,color:G.dark,marginBottom:10}}>People You May Know</div>
@@ -580,7 +707,7 @@ function FollowSuggestions({users,currentUserId,following,onFollow}){
               color:following[u.id]?G.blue:'white',
               border:following[u.id]?`1.5px solid ${G.sky}`:'none',
               borderRadius:20,padding:'6px 0',fontSize:12,fontWeight:700,
-              cursor:'pointer',transition:'all .2s',width:'100%',fontFamily:'inherit'}}>
+              cursor:'pointer',width:'100%',fontFamily:'inherit'}}>
               {following[u.id]?'Following ✓':'Follow'}
             </button>
           </div>
@@ -590,7 +717,7 @@ function FollowSuggestions({users,currentUserId,following,onFollow}){
   );
 }
 
-// ── STATIC REEL CARD ──────────────────────────
+// ── REEL CARD ─────────────────────────────────
 function ReelCard({showToast}){
   const[liked,setLiked]=useState(false);
   const[cnt,setCnt]=useState(186200);
@@ -611,14 +738,12 @@ function ReelCard({showToast}){
         <div style={{color:G.gray,fontSize:18}}>···</div>
       </div>
       <div style={{padding:'3px 13px 9px',fontSize:13,color:G.dark,lineHeight:1.5}}>
-        Here's a motivational video to start your day! 🚀 Let's make today amazing! 💙<br/>
+        Motivational video just for you! 🚀 Let's make today amazing! 💙<br/>
         <span style={{color:G.blue,fontWeight:600}}>#Inspiration #Motivation #AI</span>
       </div>
       <div style={{position:'relative',width:'100%',height:300,overflow:'hidden',
         display:'flex',alignItems:'center',justifyContent:'center',
         background:'linear-gradient(180deg,#e0f0ff,#b3d4ff 40%,#7eb8ff)'}}>
-        <div style={{position:'absolute',background:'rgba(255,255,255,.45)',borderRadius:30,
-          width:70,height:22,top:35,left:8,opacity:.55}}/>
         <div style={{position:'absolute',top:16,right:16,zIndex:3,background:'white',
           borderRadius:'18px 18px 18px 4px',padding:'9px 14px',
           fontSize:15,fontWeight:700,color:G.blue,
@@ -628,7 +753,7 @@ function ReelCard({showToast}){
           display:'flex',flexDirection:'column',gap:14,alignItems:'center'}}>
           {[[liked?'❤️':'🤍',fmtN(cnt),()=>{setLiked(l=>!l);setCnt(c=>liked?c-1:c+1);}],
             ['💬','5.3K',()=>showToast('💬 Comments')],
-            ['🔗','Share',()=>showToast('🔗 Link copied!')],
+            ['🔗','Share',()=>showToast('🔗 Copied!')],
             ['🔖','13.1K',()=>showToast('🔖 Saved!')]].map(([ic,lb,fn],i)=>(
             <div key={i} onClick={fn} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,cursor:'pointer'}}>
               <div style={{width:40,height:40,borderRadius:'50%',
@@ -637,16 +762,6 @@ function ReelCard({showToast}){
               <span style={{fontSize:10,color:'white',fontWeight:600,textShadow:'0 1px 3px rgba(0,0,0,.5)'}}>{lb}</span>
             </div>
           ))}
-        </div>
-        <div style={{position:'absolute',bottom:18,right:56,zIndex:4,width:34,height:34,
-          borderRadius:'50%',border:'2px solid white',
-          background:'linear-gradient(135deg,#F9A8D4,#EC4899)',
-          display:'flex',alignItems:'center',justifyContent:'center',fontSize:15}}>
-          👧
-          <div style={{position:'absolute',bottom:-2,right:-2,width:14,height:14,
-            background:G.blue,borderRadius:'50%',border:'2px solid white',
-            color:'white',fontSize:8,fontWeight:700,
-            display:'flex',alignItems:'center',justifyContent:'center'}}>+</div>
         </div>
         <div onClick={()=>showToast('▶️ Playing...')} style={{
           position:'absolute',bottom:18,left:'50%',transform:'translateX(-50%)',
@@ -662,11 +777,11 @@ function ReelCard({showToast}){
           <div onClick={()=>{setLiked(l=>!l);setCnt(c=>liked?c-1:c+1);}}
             style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',
               color:liked?G.red:G.gray,fontSize:12.5}}>
-            <span style={{fontSize:19}}>{liked?'❤️':'🤍'}</span> {fmtN(cnt)}
+            <span style={{fontSize:19}}>{liked?'❤️':'🤍'}</span>{fmtN(cnt)}
           </div>
-          <div onClick={()=>showToast('💬 Comments')}
+          <div onClick={()=>showToast('💬')}
             style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',color:G.gray,fontSize:12.5}}>
-            <span style={{fontSize:19}}>💬</span> 5.3K
+            <span style={{fontSize:19}}>💬</span>5.3K
           </div>
         </div>
         <div style={{display:'flex',gap:10}}>
@@ -678,27 +793,30 @@ function ReelCard({showToast}){
   );
 }
 
-// ═══════════════════════════════════════════════
+// ════════════════════════════════════════════
 // MAIN FEED
-// ═══════════════════════════════════════════════
+// ════════════════════════════════════════════
 export default function Feed(){
   const navigate=useNavigate();
   const[user,setUser]=useState(null);
   const[profile,setProfile]=useState(null);
   const[posts,setPosts]=useState([]);
-  const[allUsers,setAllUsers]=useState([]);  // real users from DB
+  const[allUsers,setAllUsers]=useState([]);
+  const[stories,setStories]=useState([]); // REAL stories from DB only
   const[loading,setLoading]=useState(true);
   const[likedPosts,setLikedPosts]=useState({});
   const[following,setFollowing]=useState({});
 
+  // UI state
   const[activeNav,setActiveNav]=useState('home');
   const[showMessages,setShowMessages]=useState(false);
   const[showCreate,setShowCreate]=useState(false);
+  const[showAddStory,setShowAddStory]=useState(false);
   const[activeStory,setActiveStory]=useState(null);
   const[commentPostId,setCommentPostId]=useState(null);
   const[toast,setToast]=useState('');
 
-  const showToast=msg=>{setToast(msg);setTimeout(()=>setToast(''),2200);};
+  const showToast=msg=>{setToast(msg);setTimeout(()=>setToast(''),2400);};
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{
@@ -710,30 +828,36 @@ export default function Feed(){
 
   const loadAll=async uid=>{
     setLoading(true);
-    // Load current user profile
+
+    // My profile
     const{data:prof}=await supabase.from('profiles').select('*').eq('id',uid).single();
     if(prof)setProfile(prof);
 
-    // Load ALL other real users for stories + suggestions + messages
+    // Other real users
     const{data:users}=await supabase.from('profiles')
-      .select('id,full_name,username,avatar_url')
-      .neq('id',uid)
-      .limit(20);
+      .select('id,full_name,username,avatar_url').neq('id',uid).limit(20);
     if(users)setAllUsers(users);
 
-    // Load posts
+    // Posts
     const{data:postsData}=await supabase.from('posts')
       .select('*,profiles(full_name,username,avatar_url)')
       .order('created_at',{ascending:false}).limit(50);
     if(postsData)setPosts(postsData);
 
-    // Load my likes
+    // My likes
     const{data:lk}=await supabase.from('likes').select('post_id').eq('user_id',uid);
     if(lk){const lm={};lk.forEach(l=>{lm[l.post_id]=true;});setLikedPosts(lm);}
 
-    // Load who I follow
+    // Who I follow
     const{data:fol}=await supabase.from('follows').select('following_id').eq('follower_id',uid);
     if(fol){const fm={};fol.forEach(f=>{fm[f.following_id]=true;});setFollowing(fm);}
+
+    // Load REAL stories only (not expired, posted in last 24 hours)
+    const{data:storiesData}=await supabase.from('stories')
+      .select('*,profiles(full_name,username,avatar_url)')
+      .gt('expires_at',new Date().toISOString())  // only stories not yet expired
+      .order('created_at',{ascending:false});
+    if(storiesData)setStories(storiesData);
 
     setLoading(false);
   };
@@ -765,17 +889,11 @@ export default function Feed(){
     }
   };
 
-  // Stories = your story + real users who have signed up
-  const stories=[
-    {id:'you',profile:{full_name:'Your Story',avatar_url:profile?.avatar_url},isYou:true,idx:0},
-    ...allUsers.map((u,i)=>({id:u.id,profile:u,isYou:false,idx:i+1}))
-  ];
-
   const navItems=[
     {id:'home',    icon:'🏠', label:'Home'},
     {id:'friends', icon:'👥', label:'Friends'},
-    {id:'create',  icon:'+',  label:'',    isPlus:true},
-    {id:'messages',icon:'💬', label:'Messages', badge:allUsers.length>0?allUsers.length:null},
+    {id:'create',  icon:'+',  isPlus:true},
+    {id:'messages',icon:'💬', label:'Messages'},
     {id:'profile', icon:'👤', label:'Profile'},
   ];
 
@@ -787,6 +905,9 @@ export default function Feed(){
     setActiveNav(id);
   };
 
+  // Check if current user already has an active story
+  const myStory=stories.find(s=>s.user_id===user?.id);
+
   return(
     <>
       <style>{`
@@ -796,21 +917,24 @@ export default function Feed(){
         @keyframes typebounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
         *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
         body{margin:0;padding:0;background:#F0F4FF;}
-        .noscroll::-webkit-scrollbar{display:none;}
-        .noscroll{scrollbar-width:none;-ms-overflow-style:none;}
+        .ns::-webkit-scrollbar{display:none;}.ns{scrollbar-width:none;}
       `}</style>
 
       <Toast msg={toast}/>
 
+      {/* Overlays */}
       {activeStory&&<StoryViewer story={activeStory} onClose={()=>setActiveStory(null)}/>}
       {commentPostId&&user&&<CommentsSheet postId={commentPostId} user={user} onClose={()=>setCommentPostId(null)}/>}
       {showCreate&&user&&<CreateSheet user={user} showToast={showToast}
         onClose={()=>setShowCreate(false)} onPosted={p=>setPosts(prev=>[p,...prev])}/>}
+      {showAddStory&&user&&<AddStorySheet user={user} showToast={showToast}
+        onClose={()=>setShowAddStory(false)}
+        onAdded={s=>setStories(prev=>[s,...prev])}/>}
       {showMessages&&<MessagesScreen currentUser={user} allUsers={allUsers}
         showToast={showToast} onClose={()=>{setShowMessages(false);setActiveNav('home');}}/>}
 
       <div style={{width:'100%',minHeight:'100dvh',background:G.bg,display:'flex',
-        flexDirection:'column',fontFamily:"'Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif",
+        flexDirection:'column',fontFamily:"'Segoe UI',-apple-system,sans-serif",
         maxWidth:480,margin:'0 auto',position:'relative'}}>
 
         {/* TOP BAR */}
@@ -837,8 +961,8 @@ export default function Feed(){
                 fontSize:8,width:14,height:14,borderRadius:'50%',
                 display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>3</div>
             </div>
-            <div onClick={()=>navigate('/profile')} style={{
-              width:30,height:30,borderRadius:'50%',overflow:'hidden',cursor:'pointer',
+            <div onClick={()=>navigate('/profile')} style={{width:30,height:30,borderRadius:'50%',
+              overflow:'hidden',cursor:'pointer',
               background:'linear-gradient(135deg,#93C5FD,#1D4ED8)',
               display:'flex',alignItems:'center',justifyContent:'center',
               color:'white',fontSize:13,fontWeight:700}}>
@@ -850,63 +974,92 @@ export default function Feed(){
         </div>
 
         {/* SCROLL AREA */}
-        <div className="noscroll" style={{flex:1,overflowY:'auto',overflowX:'hidden',
+        <div className="ns" style={{flex:1,overflowY:'auto',overflowX:'hidden',
           WebkitOverflowScrolling:'touch',paddingBottom:80}}>
 
-          {/* STORIES — real users only */}
+          {/* ── STORIES ROW ── */}
           <div style={{background:'white',padding:'10px 0 12px',borderBottom:'1px solid #e8f0fe'}}>
-            <div className="noscroll" style={{display:'flex',gap:12,overflowX:'auto',
+            <div className="ns" style={{display:'flex',gap:12,overflowX:'auto',
               padding:'0 14px',WebkitOverflowScrolling:'touch'}}>
-              {stories.map((s,i)=>(
-                <div key={s.id} onClick={()=>!s.isYou&&setActiveStory(s)}
-                  style={{display:'flex',flexDirection:'column',alignItems:'center',
-                    gap:4,cursor:'pointer',flexShrink:0}}>
+
+              {/* Always show "Your Story" button */}
+              <div onClick={()=>myStory?setActiveStory(myStory):setShowAddStory(true)}
+                style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,cursor:'pointer',flexShrink:0}}>
+                <div style={{width:62,height:62,borderRadius:'50%',
+                  background:'#e2e8f0',padding:2.5,position:'relative'}}>
+                  <div style={{width:'100%',height:'100%',borderRadius:'50%',
+                    background:'white',padding:2,display:'flex',
+                    alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+                    {profile?.avatar_url
+                      ?<img src={profile.avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}}/>
+                      :<div style={{width:'100%',height:'100%',borderRadius:'50%',
+                          background:'linear-gradient(135deg,#93C5FD,#1D4ED8)',
+                          display:'flex',alignItems:'center',justifyContent:'center',
+                          fontSize:24,color:'white',fontWeight:700}}>
+                          {ini(profile?.full_name||user?.email||'Y')}
+                        </div>
+                    }
+                  </div>
+                  {/* Show + if no story yet, or green dot if already has story */}
+                  <div style={{position:'absolute',bottom:0,right:0,width:18,height:18,
+                    background:myStory?'#22C55E':G.blue,
+                    borderRadius:'50%',border:'2px solid white',
+                    color:'white',fontSize:myStory?10:14,fontWeight:700,
+                    display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>
+                    {myStory?'✓':'+'}
+                  </div>
+                </div>
+                <span style={{fontSize:10,color:G.dark,fontWeight:500,maxWidth:62,textAlign:'center'}}>
+                  {myStory?'Your Story':'Add Story'}
+                </span>
+              </div>
+
+              {/* Real stories from other users — only if they posted one */}
+              {stories.filter(s=>s.user_id!==user?.id).map((s,i)=>(
+                <div key={s.id} onClick={()=>setActiveStory(s)}
+                  style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,
+                    cursor:'pointer',flexShrink:0}}>
                   <div style={{width:62,height:62,borderRadius:'50%',
-                    background:s.isYou?'#e2e8f0':GRAD[s.idx%GRAD.length],
-                    padding:2.5,position:'relative'}}>
+                    background:GRAD[(i+1)%GRAD.length],padding:2.5,position:'relative'}}>
                     <div style={{width:'100%',height:'100%',borderRadius:'50%',
                       background:'white',padding:2,display:'flex',
                       alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-                      {s.profile?.avatar_url
-                        ?<img src={s.profile.avatar_url} alt=""
-                            style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}}/>
+                      {s.profiles?.avatar_url
+                        ?<img src={s.profiles.avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}}/>
                         :<div style={{width:'100%',height:'100%',borderRadius:'50%',
-                            background:s.isYou?'linear-gradient(135deg,#93C5FD,#1D4ED8)':GRAD[s.idx%GRAD.length],
+                            background:GRAD[(i+1)%GRAD.length],
                             display:'flex',alignItems:'center',justifyContent:'center',
                             fontSize:24,color:'white',fontWeight:700}}>
-                            {s.isYou?ini(profile?.full_name||'Y'):ini(s.profile?.full_name||s.profile?.username)}
+                            {ini(s.profiles?.full_name||s.profiles?.username)}
                           </div>
                       }
                     </div>
-                    {s.isYou&&<div style={{position:'absolute',bottom:0,right:0,width:18,height:18,
-                      background:G.blue,borderRadius:'50%',border:'2px solid white',
-                      color:'white',fontSize:13,fontWeight:700,
-                      display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</div>}
                   </div>
                   <span style={{fontSize:10,color:G.dark,fontWeight:500,maxWidth:62,
                     textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                    {s.isYou?'Your Story':(s.profile?.full_name||s.profile?.username||'User')}
+                    {s.profiles?.full_name||s.profiles?.username||'User'}
                   </span>
                 </div>
               ))}
-              {/* Show placeholder if no other users yet */}
-              {allUsers.length===0&&(
-                <div style={{display:'flex',alignItems:'center',color:G.gray,fontSize:12,
-                  padding:'8px 4px',whiteSpace:'nowrap'}}>
-                  No other users yet 👋
+
+              {/* If no stories at all from others */}
+              {stories.filter(s=>s.user_id!==user?.id).length===0&&(
+                <div style={{display:'flex',alignItems:'center',color:G.gray,fontSize:11,
+                  padding:'8px 4px',flexShrink:0,fontStyle:'italic'}}>
+                  No stories yet — be first! ✨
                 </div>
               )}
             </div>
           </div>
 
-          {/* REEL CARD */}
+          {/* REEL */}
           <ReelCard showToast={showToast}/>
 
-          {/* FOLLOW SUGGESTIONS — real users not yet followed */}
+          {/* FOLLOW SUGGESTIONS */}
           <FollowSuggestions users={allUsers} currentUserId={user?.id}
             following={following} onFollow={handleFollow}/>
 
-          {/* REAL POSTS */}
+          {/* POSTS */}
           {loading&&(
             <div style={{textAlign:'center',padding:40,color:G.gray,fontSize:13}}>
               <div style={{fontSize:40,marginBottom:10,animation:'floaty 1.5s infinite'}}>🤖</div>
@@ -923,7 +1076,7 @@ export default function Feed(){
             <div style={{textAlign:'center',padding:'40px 20px',color:G.gray}}>
               <div style={{fontSize:50,marginBottom:12}}>📝</div>
               <div style={{fontSize:15,fontWeight:600,color:G.dark,marginBottom:6}}>No posts yet!</div>
-              <div style={{fontSize:13}}>Be the first to share something amazing 🚀</div>
+              <div style={{fontSize:13}}>Be the first to share something! 🚀</div>
               <button onClick={()=>setShowCreate(true)} style={{marginTop:16,
                 background:'linear-gradient(135deg,#60A5FA,#2563EB)',color:'white',
                 border:'none',borderRadius:20,padding:'10px 24px',
@@ -940,7 +1093,7 @@ export default function Feed(){
           padding:'8px 0 16px',zIndex:100,boxShadow:'0 -3px 16px rgba(37,99,235,.08)'}}>
           {navItems.map(nav=>(
             nav.isPlus
-              ?<div key="create" onClick={()=>handleNav('create')} style={{
+              ?<div key="plus" onClick={()=>handleNav('create')} style={{
                   width:52,height:52,borderRadius:'50%',
                   background:'linear-gradient(135deg,#60A5FA,#2563EB)',
                   display:'flex',alignItems:'center',justifyContent:'center',
@@ -951,12 +1104,6 @@ export default function Feed(){
                   cursor:'pointer',color:activeNav===nav.id?G.blue:G.gray,
                   fontSize:9.5,padding:'3px 10px',minWidth:50,position:'relative'}}>
                 <span style={{fontSize:22}}>{nav.icon}</span>
-                {nav.badge&&activeNav!=='messages'&&(
-                  <div style={{position:'absolute',top:0,right:4,background:G.red,
-                    color:'white',fontSize:8,width:14,height:14,borderRadius:'50%',
-                    display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>
-                    {nav.badge}</div>
-                )}
                 <span style={{fontWeight:activeNav===nav.id?700:400}}>{nav.label}</span>
               </div>
           ))}
