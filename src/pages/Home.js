@@ -61,7 +61,6 @@ export default function Home() {
     { icon: '👤', title: 'My Profile',        sub: 'Edit your profile',          path: '/profile',        cls: 'profile-card' },
     { icon: '🎨', title: 'AI Image Creator',  sub: 'Generate amazing images',    path: '/image-creator',  cls: 'image-card' },
     { icon: '📰', title: 'News Feed',         sub: 'Latest news & updates',      path: '/news',           cls: 'news-card' },
-    { icon: '💬', title: 'Messages',          sub: 'Chat with friends in Feed',  path: '/feed',           cls: 'chat-card' },
   ];
 
   return (
