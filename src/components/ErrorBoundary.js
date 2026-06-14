@@ -1,23 +1,17 @@
 import React from 'react';
 
-// ErrorBoundary is a special React class component.
-// It catches crashes in any child component and shows a friendly error screen.
-// Think of it like a "try-catch" but for the entire UI.
-
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false };
   }
 
-  // This runs automatically when any child component crashes
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
+  static getDerivedStateFromError() {
+    return { hasError: true };
   }
 
-  // This logs the error so you can debug it
   componentDidCatch(error, info) {
-    console.error('💥 Buddy App Error:', error, info);
+    console.error('Buddy error:', error, info);
   }
 
   render() {
@@ -29,65 +23,54 @@ class ErrorBoundary extends React.Component {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#f8fafc',
-          padding: '20px',
-          fontFamily: 'Poppins, sans-serif',
+          background: '#F0F4FF',
+          padding: '24px',
+          fontFamily: 'Segoe UI, sans-serif',
           textAlign: 'center'
         }}>
-          <div style={{ fontSize: '64px', marginBottom: '16px' }}>🤖</div>
-          <h2 style={{ fontSize: '22px', color: '#1e293b', marginBottom: '8px' }}>
+          <div style={{ fontSize: 60, marginBottom: 16 }}>🤖</div>
+          <h2 style={{ fontSize: 20, color: '#1E293B', marginBottom: 8 }}>
             Oops! Something went wrong
           </h2>
-          <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '24px', maxWidth: '320px' }}>
-            Buddy had a small hiccup! Don't worry — tap the button below to go back to safety.
+          <p style={{ color: '#9CA3AF', fontSize: 14, marginBottom: 24, maxWidth: 300 }}>
+            Buddy had a small hiccup. Tap below to go back safely.
           </p>
           <button
-            onClick={() => {
-              this.setState({ hasError: false, error: null });
-              window.location.href = '/home';
-            }}
+            onClick={() => { this.setState({ hasError: false }); window.location.href = '/home'; }}
             style={{
-              background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
+              background: 'linear-gradient(135deg, #60A5FA, #2563EB)',
               color: 'white',
               border: 'none',
-              borderRadius: '12px',
+              borderRadius: 12,
               padding: '12px 28px',
-              fontSize: '15px',
+              fontSize: 15,
               fontWeight: 600,
               cursor: 'pointer',
-              marginBottom: '12px'
+              marginBottom: 10,
+              fontFamily: 'inherit'
             }}
           >
-            🏠 Go to Home
+            Go to Home
           </button>
           <button
             onClick={() => window.location.reload()}
             style={{
               background: 'transparent',
-              color: '#2563eb',
-              border: '1px solid #2563eb',
-              borderRadius: '12px',
+              color: '#2563EB',
+              border: '1.5px solid #2563EB',
+              borderRadius: 12,
               padding: '10px 24px',
-              fontSize: '14px',
-              cursor: 'pointer'
+              fontSize: 14,
+              cursor: 'pointer',
+              fontFamily: 'inherit'
             }}
           >
-            🔄 Reload Page
+            Reload Page
           </button>
-          {/* Show error details only during development */}
-          {process.env.NODE_ENV === 'development' && this.state.error && (
-            <details style={{ marginTop: '24px', fontSize: '11px', color: '#94a3b8', maxWidth: '400px', textAlign: 'left' }}>
-              <summary style={{ cursor: 'pointer' }}>🔧 Error details (dev only)</summary>
-              <pre style={{ marginTop: '8px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                {this.state.error.toString()}
-              </pre>
-            </details>
-          )}
         </div>
       );
     }
 
-    // If no error, render children normally
     return this.props.children;
   }
 }
