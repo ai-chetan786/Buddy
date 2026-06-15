@@ -326,30 +326,15 @@ function AddStorySheet({user,onClose,onAdded,showToast}){
     // Try insert into stories table
     const{data,error}=await supabase.from('stories')
       .insert({user_id:user.id,caption:caption.trim(),image_url:imageUrl})
-      .select('*,profiles(full_name,username,avatar_url)').single();
-    
+      .select('*').single();
+
     if(error){
-      console.error('Story insert error:', error.code, error.message, error.details);
-      // Common errors:
-      // 42P01 = table does not exist → run supabase-fix-all.sql
-      // 42501 = RLS policy violation → check policies
-      if(error.code==='42P01'){
-        showToast('❌ Stories table missing — run SQL fix!');
-      } else if(error.code==='42501'){
-        showToast('❌ Permission denied — check RLS policies');
-      } else {
-        showToast('❌ Error: '+error.message);
-      }
+      console.error('Story error:', error.message);
+      showToast('❌ Error: '+error.message);
     } else if(data){
+      // profiles join not needed here — Feed loads stories separately with profiles
       onAdded(data);
       showToast('✨ Story added! Visible for 24 hours');
-    } else {
-      // No error but no data — try without .single()
-      const{data:d2,error:e2}=await supabase.from('stories')
-        .insert({user_id:user.id,caption:caption.trim(),image_url:imageUrl})
-        .select('*');
-      if(!e2&&d2&&d2[0]) onAdded(d2[0]);
-      showToast(e2?'❌ '+e2.message:'✨ Story added!');
     }
     setSaving(false);onClose();
   };
@@ -667,7 +652,7 @@ export default function Feed(){
       supabase.from('posts').select('*,profiles(full_name,username,avatar_url)').order('created_at',{ascending:false}).limit(50),
       supabase.from('likes').select('post_id').eq('user_id',uid),
       supabase.from('follows').select('following_id').eq('follower_id',uid),
-      supabase.from('stories').select('*,profiles(full_name,username,avatar_url)').gt('expires_at',new Date().toISOString()).order('created_at',{ascending:false}),
+      supabase.from('stories').select('*, profiles(id,full_name,username,avatar_url)').gt('expires_at',new Date().toISOString()).order('created_at',{ascending:false}),
     ]);
     if(prof)setProfile(prof);
     if(users)setAllUsers(users);
