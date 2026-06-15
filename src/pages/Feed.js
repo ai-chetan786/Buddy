@@ -55,7 +55,7 @@ function AIChatPanel({onClose,currentUser,showToast}){
         body:JSON.stringify({messages:[...msgs,userMsg].map(m=>({role:m.role,content:m.content}))})
       });
       const data=await res.json();
-      const reply=data.content||data.message||data.choices?.[0]?.message?.content||"I'm thinking... 🤔";
+      const reply=data.reply||data.content||data.message||data.choices?.[0]?.message?.content||"Sorry, I could not get a response. Try again! 🤖";
       setMsgs(m=>[...m,{role:'assistant',content:reply}]);
     }catch(e){
       setMsgs(m=>[...m,{role:'assistant',content:"Sorry, I couldn't connect right now. Please try again! 🤖"}]);
@@ -663,11 +663,23 @@ export default function Feed(){
 
   const handleDelete=async postId=>{
     if(!window.confirm('Delete this post?'))return;
-    await supabase.from('likes').delete().eq('post_id',postId);
-    await supabase.from('comments').delete().eq('post_id',postId);
-    await supabase.from('posts').delete().eq('id',postId).eq('user_id',user.id);
+    // ✅ Remove from UI immediately so user sees it's gone right away
     setPosts(p=>p.filter(x=>x.id!==postId));
     showToast('🗑️ Post deleted');
+    // Then delete from database (cascade order: likes → comments → post)
+    try {
+      await supabase.from('likes').delete().eq('post_id',postId);
+      await supabase.from('comments').delete().eq('post_id',postId);
+      const { error } = await supabase.from('posts').delete().eq('id',postId);
+      if(error) {
+        console.log('Delete error:', error.message);
+        // Reload posts to restore if delete failed
+        loadAll(user.id);
+      }
+    } catch(e) {
+      console.log('Delete exception:', e);
+      loadAll(user.id);
+    }
   };
 
   // ✅ FIX: Share uses Web Share API (native Android share sheet)
