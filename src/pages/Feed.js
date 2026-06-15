@@ -152,6 +152,18 @@ function StoryViewer({story,onClose}){
     setProg(0);
     const t=setTimeout(onClose,5000);
     const iv=setInterval(()=>setProg(p=>Math.min(p+2,100)),100);
+    // Track story view in database
+    const trackView=async()=>{
+      try{
+        const{data:{session}}=await supabase.auth.getSession();
+        if(session&&story.id&&story.user_id!==session.user.id){
+          await supabase.from('story_views').insert({
+            story_id:story.id, viewer_id:session.user.id
+          }).then(()=>{}).catch(()=>{});
+        }
+      }catch(e){}
+    };
+    if(story.id) trackView();
     return()=>{clearTimeout(t);clearInterval(iv);};
   },[story]);
   if(!story)return null;
@@ -897,11 +909,24 @@ export default function Feed(){
     {id:'profile', icon:'👤', label:'Profile'},
   ];
 
+  const feedTopRef=useRef(null);
+
   const handleNav=id=>{
     if(id==='messages'){setShowMessages(true);setActiveNav('messages');return;}
     if(id==='profile'){navigate('/profile');return;}
     if(id==='create'){setShowCreate(true);return;}
-    if(id==='friends'){showToast('👥 Friends feature coming soon!');return;}
+    if(id==='friends'){
+      // Friends = show follow suggestions — scroll to top of feed
+      setActiveNav('friends');
+      if(feedTopRef.current) feedTopRef.current.scrollTop=0;
+      showToast('👥 Scroll down to see People You May Know!');
+      return;
+    }
+    if(id==='home'){
+      setActiveNav('home');
+      if(feedTopRef.current) feedTopRef.current.scrollTop=0;
+      return;
+    }
     setActiveNav(id);
   };
 
@@ -974,7 +999,7 @@ export default function Feed(){
         </div>
 
         {/* SCROLL AREA */}
-        <div className="ns" style={{flex:1,overflowY:'auto',overflowX:'hidden',
+        <div ref={feedTopRef} className="ns" style={{flex:1,overflowY:'auto',overflowX:'hidden',
           WebkitOverflowScrolling:'touch',paddingBottom:80}}>
 
           {/* ── STORIES ROW ── */}
