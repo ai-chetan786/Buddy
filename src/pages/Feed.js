@@ -314,14 +314,43 @@ function AddStorySheet({user,onClose,onAdded,showToast}){
     if(image){
       const ext=image.name.split('.').pop();
       const path=`stories/${user.id}_${Date.now()}.${ext}`;
-      const{error:upErr}=await supabase.storage.from('posts').upload(path,image);
-      if(!upErr){const{data:{publicUrl}}=supabase.storage.from('posts').getPublicUrl(path);imageUrl=publicUrl;}
+      const{error:upErr}=await supabase.storage.from('posts').upload(path,image,{upsert:true});
+      if(upErr){
+        console.warn('Image upload failed:', upErr.message, '— continuing without image');
+        // Don't block story creation if image fails
+      } else {
+        const{data:{publicUrl}}=supabase.storage.from('posts').getPublicUrl(path);
+        imageUrl=publicUrl;
+      }
     }
+    // Try insert into stories table
     const{data,error}=await supabase.from('stories')
       .insert({user_id:user.id,caption:caption.trim(),image_url:imageUrl})
       .select('*,profiles(full_name,username,avatar_url)').single();
-    if(!error&&data){onAdded(data);showToast('✨ Story added! Visible for 24 hours');}
-    else showToast('❌ Could not add story');
+    
+    if(error){
+      console.error('Story insert error:', error.code, error.message, error.details);
+      // Common errors:
+      // 42P01 = table does not exist → run supabase-fix-all.sql
+      // 42501 = RLS policy violation → check policies
+      if(error.code==='42P01'){
+        showToast('❌ Stories table missing — run SQL fix!');
+      } else if(error.code==='42501'){
+        showToast('❌ Permission denied — check RLS policies');
+      } else {
+        showToast('❌ Error: '+error.message);
+      }
+    } else if(data){
+      onAdded(data);
+      showToast('✨ Story added! Visible for 24 hours');
+    } else {
+      // No error but no data — try without .single()
+      const{data:d2,error:e2}=await supabase.from('stories')
+        .insert({user_id:user.id,caption:caption.trim(),image_url:imageUrl})
+        .select('*');
+      if(!e2&&d2&&d2[0]) onAdded(d2[0]);
+      showToast(e2?'❌ '+e2.message:'✨ Story added!');
+    }
     setSaving(false);onClose();
   };
   return(
