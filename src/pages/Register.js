@@ -48,7 +48,7 @@ export default function Register() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin + '/home' }
+      options: { redirectTo: window.location.origin + '/feed' }
     });
     if (error) setError(error.message);
     setLoading(false);
