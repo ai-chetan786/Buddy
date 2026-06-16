@@ -29,86 +29,244 @@ function Av({p,size=40,idx=0}){
 }
 
 // ══════════════════════════════════════════════
-// AI CHAT PANEL (GPT-style, inside Feed)
+// AI CHAT PANEL — ChatGPT style with session storage
+// Sessions saved to Supabase, persist after refresh
 // ══════════════════════════════════════════════
 function AIChatPanel({onClose,currentUser,showToast}){
-  const[msgs,setMsgs]=useState([
-    {role:'assistant',content:"Hey! I'm Buddy AI 🤖 Ask me anything — I'm here to help!"}
-  ]);
+  const[sessions,setSessions]=useState([]);         // list of chat sessions
+  const[activeSession,setActiveSession]=useState(null); // current session id
+  const[msgs,setMsgs]=useState([]);                 // messages in current session
   const[input,setInput]=useState('');
   const[loading,setLoading]=useState(false);
-  const[sessions,setSessions]=useState([{id:'s1',title:'New Chat'}]);
+  const[loadingSessions,setLoadingSessions]=useState(true);
+  const[showSidebar,setShowSidebar]=useState(false);
   const msgsRef=useRef(null);
 
+  // Auto scroll to bottom
   useEffect(()=>{
     setTimeout(()=>{if(msgsRef.current)msgsRef.current.scrollTop=msgsRef.current.scrollHeight;},60);
   },[msgs]);
 
+  // Load all sessions on mount
+  useEffect(()=>{
+    if(currentUser) loadSessions();
+  },[currentUser]);
+
+  const loadSessions=async()=>{
+    setLoadingSessions(true);
+    const{data}=await supabase.from('ai_chat_sessions')
+      .select('*').eq('user_id',currentUser.id)
+      .order('updated_at',{ascending:false});
+    const list=data||[];
+    setSessions(list);
+    if(list.length>0){
+      // Load most recent session
+      await loadSession(list[0].id);
+    } else {
+      // No sessions — start fresh
+      setMsgs([{role:'assistant',content:"Hey! I\'m Buddy AI 🤖 Ask me anything — I\'m here to help!"}]);
+      setActiveSession(null);
+    }
+    setLoadingSessions(false);
+  };
+
+  const loadSession=async(sessionId)=>{
+    setActiveSession(sessionId);
+    setShowSidebar(false);
+    const{data}=await supabase.from('ai_chat_messages')
+      .select('*').eq('session_id',sessionId)
+      .order('created_at',{ascending:true});
+    if(data&&data.length>0){
+      setMsgs(data.map(m=>({role:m.role,content:m.content})));
+    } else {
+      setMsgs([{role:'assistant',content:"Hey! I\'m Buddy AI 🤖 Ask me anything!"}]);
+    }
+  };
+
+  const startNewChat=async()=>{
+    // Create new session in Supabase
+    const{data,error}=await supabase.from('ai_chat_sessions')
+      .insert({user_id:currentUser.id,title:'New Chat'})
+      .select().single();
+    if(!error&&data){
+      setSessions(s=>[data,...s]);
+      setActiveSession(data.id);
+      setMsgs([{role:'assistant',content:"New chat! 🤖 What\'s on your mind?"}]);
+      // Save the welcome message
+      await supabase.from('ai_chat_messages').insert({
+        session_id:data.id, user_id:currentUser.id,
+        role:'assistant', content:"New chat! 🤖 What\'s on your mind?"
+      });
+    }
+    setShowSidebar(false);
+  };
+
+  const saveMsg=async(sessionId,role,content)=>{
+    if(!sessionId)return;
+    await supabase.from('ai_chat_messages').insert({
+      session_id:sessionId, user_id:currentUser.id, role, content
+    });
+    // Update session updated_at
+    await supabase.from('ai_chat_sessions')
+      .update({updated_at:new Date().toISOString()})
+      .eq('id',sessionId);
+  };
+
+  const updateSessionTitle=async(sessionId,firstUserMsg)=>{
+    // Use first user message as session title (truncated)
+    const title=firstUserMsg.substring(0,40)+(firstUserMsg.length>40?\'...\':\'\');
+    await supabase.from('ai_chat_sessions').update({title}).eq('id',sessionId);
+    setSessions(s=>s.map(x=>x.id===sessionId?{...x,title}:x));
+  };
+
+  const deleteSession=async(sessionId,e)=>{
+    e.stopPropagation();
+    await supabase.from('ai_chat_messages').delete().eq('session_id',sessionId);
+    await supabase.from('ai_chat_sessions').delete().eq('id',sessionId);
+    const remaining=sessions.filter(s=>s.id!==sessionId);
+    setSessions(remaining);
+    if(activeSession===sessionId){
+      if(remaining.length>0) await loadSession(remaining[0].id);
+      else{ setMsgs([{role:\'assistant\',content:"Hey! I\'m Buddy AI 🤖 Ask me anything!"}]); setActiveSession(null); }
+    }
+  };
+
   const send=async()=>{
     if(!input.trim()||loading)return;
-    const userMsg={role:'user',content:input.trim()};
-    setMsgs(m=>[...m,userMsg]); setInput(''); setLoading(true);
+    const userText=input.trim();
+    setInput(\'\');
+
+    // If no active session, create one first
+    let sessionId=activeSession;
+    if(!sessionId){
+      const{data,error}=await supabase.from(\'ai_chat_sessions\')
+        .insert({user_id:currentUser.id,title:userText.substring(0,40)})
+        .select().single();
+      if(!error&&data){
+        sessionId=data.id;
+        setActiveSession(data.id);
+        setSessions(s=>[data,...s]);
+      }
+    }
+
+    // Add user message to UI immediately
+    const newMsgs=[...msgs,{role:\'user\',content:userText}];
+    setMsgs(newMsgs);
+    setLoading(true);
+
+    // Save user message to DB
+    await saveMsg(sessionId,\'user\',userText);
+
+    // Update session title from first user message
+    const userMsgCount=msgs.filter(m=>m.role===\'user\').length;
+    if(userMsgCount===0&&sessionId) await updateSessionTitle(sessionId,userText);
+
+    // Call AI API
     try{
-      const res=await fetch('/api/chat',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({messages:[...msgs,userMsg].map(m=>({role:m.role,content:m.content}))})
+      const res=await fetch(\'/api/chat\',{
+        method:\'POST\',
+        headers:{\'Content-Type\':\'application/json\'},
+        body:JSON.stringify({messages:newMsgs.map(m=>({role:m.role,content:m.content}))})
       });
-      const data=await res.json();
-      const reply=data.reply||data.content||data.message||data.choices?.[0]?.message?.content||"Sorry, I could not get a response. Try again! 🤖";
-      setMsgs(m=>[...m,{role:'assistant',content:reply}]);
+      const d=await res.json();
+      const reply=d.reply||d.content||d.message||\"I\'m having trouble right now. Try again! 🤖\";
+      setMsgs(m=>[...m,{role:\'assistant\',content:reply}]);
+      // Save AI reply to DB
+      await saveMsg(sessionId,\'assistant\',reply);
     }catch(e){
-      setMsgs(m=>[...m,{role:'assistant',content:"Sorry, I couldn't connect right now. Please try again! 🤖"}]);
+      const err="Sorry, couldn\'t connect. Try again! 🤖";
+      setMsgs(m=>[...m,{role:\'assistant\',content:err}]);
+      await saveMsg(sessionId,\'assistant\',err);
     }
     setLoading(false);
   };
 
-  const newChat=()=>{
-    setMsgs([{role:'assistant',content:"New chat started! 🤖 What's on your mind?"}]);
-    setInput('');
-  };
+  const quickPrompts=["Tell me a joke 😄","Give me motivation 💪","Help me write a post","Explain AI simply"];
 
-  const quickPrompts=["Tell me a joke 😄","What's the weather like?","Help me write a post","Give me motivation 💪"];
+  if(loadingSessions){
+    return(
+      <div style={{position:\'fixed\',inset:0,zIndex:200,background:\'#F0F4FF\',display:\'flex\',alignItems:\'center\',justifyContent:\'center\',flexDirection:\'column\',gap:12,fontFamily:"\'Segoe UI\',-apple-system,sans-serif"}}>
+        <div style={{fontSize:48,animation:\'floaty 1.5s infinite\'}}>🤖</div>
+        <p style={{color:\'#9CA3AF\',fontSize:14}}>Loading your chats...</p>
+      </div>
+    );
+  }
 
   return(
-    <div style={{position:'fixed',inset:0,zIndex:200,background:G.bg,display:'flex',flexDirection:'column',fontFamily:"'Segoe UI',-apple-system,sans-serif"}}>
-      {/* Header */}
-      <div style={{flexShrink:0,background:'linear-gradient(135deg,#2563EB,#1D4ED8)',padding:'48px 16px 12px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-        <span onClick={onClose} style={{fontSize:22,cursor:'pointer',color:'white'}}>←</span>
-        <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <div style={{width:30,height:30,background:'white',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>🤖</div>
-          <span style={{fontSize:17,fontWeight:800,color:'white'}}>Buddy AI Chat</span>
+    <div style={{position:\'fixed\',inset:0,zIndex:200,background:\'#F0F4FF\',display:\'flex\',flexDirection:\'column\',fontFamily:"\'Segoe UI\',-apple-system,sans-serif"}}>
+
+      {/* Sidebar overlay */}
+      {showSidebar&&(
+        <div onClick={()=>setShowSidebar(false)} style={{position:\'absolute\',inset:0,zIndex:10,background:\'rgba(0,0,0,.4)\',display:\'flex\'}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:260,background:\'white\',height:\'100%\',display:\'flex\',flexDirection:\'column\',overflowY:\'auto\'}}>
+            <div style={{padding:\'48px 14px 12px\',background:\'linear-gradient(135deg,#2563EB,#1D4ED8)\'}}>
+              <div style={{fontSize:16,fontWeight:700,color:\'white\',marginBottom:8}}>🤖 Chat History</div>
+              <button onClick={startNewChat} style={{width:\'100%\',padding:\'9px\',background:\'rgba(255,255,255,.2)\',border:\'1px solid rgba(255,255,255,.4)\',borderRadius:10,color:\'white\',fontSize:13,fontWeight:600,cursor:\'pointer\',fontFamily:\'inherit\'}}>✏️ New Chat</button>
+            </div>
+            <div style={{flex:1,overflowY:\'auto\',padding:\'8px\'}}>
+              {sessions.length===0&&<div style={{textAlign:\'center\',color:\'#9CA3AF\',padding:\'20px 0\',fontSize:12}}>No chats yet.<br/>Start a conversation!</div>}
+              {sessions.map(s=>(
+                <div key={s.id} onClick={()=>loadSession(s.id)} style={{
+                  display:\'flex\',alignItems:\'center\',gap:8,padding:\'10px 10px\',borderRadius:10,cursor:\'pointer\',marginBottom:4,
+                  background:activeSession===s.id?\'#EFF6FF\':\'transparent\',
+                  border:activeSession===s.id?\'1.5px solid #BFDBFE\':\'1.5px solid transparent\'}}>
+                  <span style={{fontSize:14}}>💬</span>
+                  <div style={{flex:1,overflow:\'hidden\'}}>
+                    <div style={{fontSize:12,fontWeight:600,color:\'#1E293B\',overflow:\'hidden\',textOverflow:\'ellipsis\',whiteSpace:\'nowrap\'}}>{s.title||(\'Chat \'+new Date(s.created_at).toLocaleDateString())}</div>
+                    <div style={{fontSize:10,color:\'#9CA3AF\'}}>{new Date(s.updated_at||s.created_at).toLocaleDateString()}</div>
+                  </div>
+                  <button onClick={(e)=>deleteSession(s.id,e)} style={{background:\'none\',border:\'none\',color:\'#EF4444\',fontSize:14,cursor:\'pointer\',padding:2,flexShrink:0}}>🗑️</button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-        <span onClick={newChat} title="New chat" style={{fontSize:20,cursor:'pointer',color:'white'}}>✏️</span>
+      )}
+
+      {/* Header */}
+      <div style={{flexShrink:0,background:\'linear-gradient(135deg,#2563EB,#1D4ED8)\',padding:\'48px 16px 12px\',display:\'flex\',alignItems:\'center\',justifyContent:\'space-between\'}}>
+        <span onClick={onClose} style={{fontSize:22,cursor:\'pointer\',color:\'white\'}}>←</span>
+        <div style={{display:\'flex\',alignItems:\'center\',gap:8}}>
+          <div style={{width:30,height:30,background:\'white\',borderRadius:\'50%\',display:\'flex\',alignItems:\'center\',justifyContent:\'center\',fontSize:16}}>🤖</div>
+          <div>
+            <div style={{fontSize:15,fontWeight:800,color:\'white\'}}>Buddy AI Chat</div>
+            <div style={{fontSize:9,color:\'rgba(255,255,255,.7)\'}}>Powered by Groq • History saved</div>
+          </div>
+        </div>
+        <div style={{display:\'flex\',gap:12}}>
+          <span onClick={()=>setShowSidebar(true)} title="Chat history" style={{fontSize:20,cursor:\'pointer\',color:\'white\'}}>☰</span>
+          <span onClick={startNewChat} title="New chat" style={{fontSize:20,cursor:\'pointer\',color:\'white\'}}>✏️</span>
+        </div>
       </div>
 
       {/* Messages */}
-      <div ref={msgsRef} style={{flex:1,overflowY:'auto',padding:'14px 12px',display:'flex',flexDirection:'column',gap:12,scrollbarWidth:'none'}}>
+      <div ref={msgsRef} style={{flex:1,overflowY:\'auto\',padding:\'14px 12px\',display:\'flex\',flexDirection:\'column\',gap:12,scrollbarWidth:\'none\'}}>
         {msgs.map((m,i)=>(
-          <div key={i} style={{display:'flex',alignItems:'flex-end',gap:8,flexDirection:m.role==='user'?'row-reverse':'row'}}>
-            {m.role==='assistant'&&<div style={{width:28,height:28,borderRadius:'50%',background:'linear-gradient(135deg,#60A5FA,#2563EB)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0}}>🤖</div>}
-            <div style={{maxWidth:'78%',padding:'10px 14px',borderRadius:18,fontSize:13,lineHeight:1.55,wordBreak:'break-word',
-              ...(m.role==='user'
-                ?{background:'linear-gradient(135deg,#3B82F6,#2563EB)',color:'white',borderBottomRightRadius:4,boxShadow:'0 2px 10px rgba(37,99,235,.3)'}
-                :{background:'white',color:G.dark,borderBottomLeftRadius:4,boxShadow:'0 1px 8px rgba(37,99,235,.1)'})}}>
+          <div key={i} style={{display:\'flex\',alignItems:\'flex-end\',gap:8,flexDirection:m.role===\'user\'?\'row-reverse\':\'row\'}}>
+            {m.role===\'assistant\'&&(
+              <div style={{width:28,height:28,borderRadius:\'50%\',background:\'linear-gradient(135deg,#60A5FA,#2563EB)\',display:\'flex\',alignItems:\'center\',justifyContent:\'center\',fontSize:14,flexShrink:0}}>🤖</div>
+            )}
+            <div style={{maxWidth:\'78%\',padding:\'10px 14px\',borderRadius:18,fontSize:13,lineHeight:1.6,wordBreak:\'break-word\',whiteSpace:\'pre-wrap\',
+              ...(m.role===\'user\'
+                ?{background:\'linear-gradient(135deg,#3B82F6,#2563EB)\',color:\'white\',borderBottomRightRadius:4,boxShadow:\'0 2px 10px rgba(37,99,235,.3)\'}
+                :{background:\'white\',color:\'#1E293B\',borderBottomLeftRadius:4,boxShadow:\'0 1px 8px rgba(37,99,235,.1)\'})}}> 
               {m.content}
             </div>
           </div>
         ))}
         {loading&&(
-          <div style={{display:'flex',alignItems:'flex-end',gap:8}}>
-            <div style={{width:28,height:28,borderRadius:'50%',background:'linear-gradient(135deg,#60A5FA,#2563EB)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14}}>🤖</div>
-            <div style={{padding:'10px 16px',background:'white',borderRadius:18,borderBottomLeftRadius:4,boxShadow:'0 1px 8px rgba(37,99,235,.1)',display:'flex',gap:4,alignItems:'center'}}>
-              {[0,.2,.4].map((d,i)=><div key={i} style={{width:7,height:7,background:'#93c5fd',borderRadius:'50%',animation:`typebounce 1.2s ${d}s infinite`}}/>)}
+          <div style={{display:\'flex\',alignItems:\'flex-end\',gap:8}}>
+            <div style={{width:28,height:28,borderRadius:\'50%\',background:\'linear-gradient(135deg,#60A5FA,#2563EB)\',display:\'flex\',alignItems:\'center\',justifyContent:\'center\',fontSize:14}}>🤖</div>
+            <div style={{padding:\'10px 16px\',background:\'white\',borderRadius:18,borderBottomLeftRadius:4,boxShadow:\'0 1px 8px rgba(37,99,235,.1)\',display:\'flex\',gap:4,alignItems:\'center\'}}>
+              {[0,.2,.4].map((d,i)=><div key={i} style={{width:7,height:7,background:\'#93c5fd\',borderRadius:\'50%\',animation:`typebounce 1.2s ${d}s infinite`}}/>)}
             </div>
           </div>
         )}
-
-        {/* Quick prompts — show when only 1 message */}
+        {/* Quick prompts */}
         {msgs.length<=1&&(
-          <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:8}}>
+          <div style={{display:\'flex\',flexWrap:\'wrap\',gap:8,marginTop:8}}>
             {quickPrompts.map(q=>(
-              <button key={q} onClick={()=>{setInput(q);}} style={{background:'white',border:'1.5px solid #BFDBFE',borderRadius:20,padding:'7px 14px',fontSize:12,color:G.blue,cursor:'pointer',fontFamily:'inherit',fontWeight:500}}>
+              <button key={q} onClick={()=>setInput(q)} style={{background:\'white\',border:\'1.5px solid #BFDBFE\',borderRadius:20,padding:\'7px 14px\',fontSize:12,color:\'#2563EB\',cursor:\'pointer\',fontFamily:\'inherit\',fontWeight:500}}>
                 {q}
               </button>
             ))}
@@ -117,14 +275,16 @@ function AIChatPanel({onClose,currentUser,showToast}){
       </div>
 
       {/* Input */}
-      <div style={{flexShrink:0,background:'white',padding:'10px 12px 20px',display:'flex',alignItems:'center',gap:8,borderTop:'1px solid #e8f0fe'}}>
-        <div style={{flex:1,display:'flex',alignItems:'center',background:'#F1F5FF',borderRadius:24,padding:'9px 14px',gap:6,border:'1.5px solid #e8f0fe'}}>
-          <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&send()}
-            placeholder="Ask me anything..." style={{flex:1,border:'none',background:'transparent',fontSize:13,color:G.dark,outline:'none',fontFamily:'inherit'}}/>
+      <div style={{flexShrink:0,background:\'white\',padding:\'10px 12px 20px\',display:\'flex\',alignItems:\'center\',gap:8,borderTop:\'1px solid #e8f0fe\'}}>
+        <div style={{flex:1,display:\'flex\',alignItems:\'center\',background:\'#F1F5FF\',borderRadius:24,padding:\'9px 14px\',gap:6,border:\'1.5px solid #e8f0fe\'}}>
+          <input value={input} onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>e.key===\'Enter\'&&!e.shiftKey&&send()}
+            placeholder="Ask me anything..."
+            style={{flex:1,border:\'none\',background:\'transparent\',fontSize:13,color:\'#1E293B\',outline:\'none\',fontFamily:\'inherit\'}}/>
         </div>
         {input.trim()
-          ?<button onClick={send} style={{width:40,height:40,borderRadius:'50%',background:'linear-gradient(135deg,#60A5FA,#2563EB)',border:'none',color:'white',fontSize:16,cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 10px rgba(37,99,235,.35)'}}>➤</button>
-          :<div style={{width:40,height:40,borderRadius:'50%',background:'linear-gradient(135deg,#60A5FA,#2563EB)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,cursor:'pointer',flexShrink:0,boxShadow:'0 2px 10px rgba(37,99,235,.35)'}}>🎤</div>
+          ?<button onClick={send} style={{width:40,height:40,borderRadius:\'50%\',background:\'linear-gradient(135deg,#60A5FA,#2563EB)\',border:\'none\',color:\'white\',fontSize:16,cursor:\'pointer\',flexShrink:0,display:\'flex\',alignItems:\'center\',justifyContent:\'center\',boxShadow:\'0 2px 10px rgba(37,99,235,.35)\'}}>➤</button>
+          :<div style={{width:40,height:40,borderRadius:\'50%\',background:\'linear-gradient(135deg,#60A5FA,#2563EB)\',display:\'flex\',alignItems:\'center\',justifyContent:\'center\',fontSize:18,cursor:\'pointer\',flexShrink:0,boxShadow:\'0 2px 10px rgba(37,99,235,.35)\'}}>🎤</div>
         }
       </div>
     </div>
@@ -677,21 +837,33 @@ export default function Feed(){
 
   const handleDelete=async postId=>{
     if(!window.confirm('Delete this post?'))return;
-    // ✅ Remove from UI immediately so user sees it's gone right away
+    // Step 1: Remove from UI immediately
     setPosts(p=>p.filter(x=>x.id!==postId));
-    showToast('🗑️ Post deleted');
-    // Then delete from database (cascade order: likes → comments → post)
+    showToast('🗑️ Deleting post...');
     try {
+      // Step 2: Delete likes first (FK constraint)
       await supabase.from('likes').delete().eq('post_id',postId);
+      // Step 3: Delete comments (FK constraint)
       await supabase.from('comments').delete().eq('post_id',postId);
-      const { error } = await supabase.from('posts').delete().eq('id',postId);
-      if(error) {
-        console.log('Delete error:', error.message);
-        // Reload posts to restore if delete failed
+      // Step 4: Delete the post itself — MUST match user_id so RLS allows it
+      const { error, data } = await supabase
+        .from('posts')
+        .delete()
+        .eq('id', postId)
+        .eq('user_id', user.id)
+        .select();
+      if(error){
+        console.error('Post delete error:', error.message, error.code);
+        showToast('❌ Delete failed: ' + error.message);
+        // Restore post in UI if delete failed
         loadAll(user.id);
+      } else {
+        showToast('🗑️ Post deleted!');
+        console.log('Deleted:', data);
       }
-    } catch(e) {
-      console.log('Delete exception:', e);
+    } catch(e){
+      console.error('Delete exception:', e);
+      showToast('❌ Delete failed');
       loadAll(user.id);
     }
   };
