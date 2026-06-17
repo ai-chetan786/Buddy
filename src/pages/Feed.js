@@ -539,11 +539,12 @@ function AddStorySheet({user,onClose,onAdded,showToast}){
 // ══════════════════════════════════════════════
 // STORY VIEWER
 // ══════════════════════════════════════════════
-function StoryViewer({story,onClose}){
+function StoryViewer({story,onClose,onNext}){
   const[prog,setProg]=useState(0);
   useEffect(()=>{
     setProg(0);
-    const t=setTimeout(onClose,5000);
+    const advance=onNext||onClose;
+    const t=setTimeout(advance,5000);
     const iv=setInterval(()=>setProg(p=>Math.min(p+2,100)),100);
     // Track view
     const track=async()=>{
@@ -788,6 +789,288 @@ function SearchPanel({onClose, currentUser, following, onFollow, navigate}) {
 // ══════════════════════════════════════════════
 // CREATE POST SHEET
 // ══════════════════════════════════════════════
+// ══════════════════════════════════════════════
+// REELS PANEL — full-screen vertical video feed
+// TikTok-style: swipe up/down, like, comment, share
+// ══════════════════════════════════════════════
+function ReelsPanel({onClose, currentUser, showToast}) {
+  const [reels, setReels] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [current, setCurrent] = useState(0);
+  const [liked, setLiked] = useState({});
+  const [showUpload, setShowUpload] = useState(false);
+  const [showComments, setShowComments] = useState(null);
+  const containerRef = useRef(null);
+  const videoRefs = useRef({});
+
+  useEffect(() => { loadReels(); }, []);
+
+  const loadReels = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('reels')
+      .select('*, profiles(full_name,username,avatar_url)')
+      .order('created_at', { ascending: false })
+      .limit(30);
+    setReels(data || []);
+    if (currentUser) {
+      const { data: lk } = await supabase.from('reel_likes').select('reel_id').eq('user_id', currentUser.id);
+      if (lk) { const lm = {}; lk.forEach(l => { lm[l.reel_id] = true; }); setLiked(lm); }
+    }
+    setLoading(false);
+  };
+
+  // Play current video, pause all others — classic Reels behavior
+  useEffect(() => {
+    Object.entries(videoRefs.current).forEach(([idx, vid]) => {
+      if (!vid) return;
+      if (Number(idx) === current) { vid.currentTime = 0; vid.play().catch(() => {}); }
+      else vid.pause();
+    });
+  }, [current, reels]);
+
+  // Detect which reel is in view as user scrolls
+  const handleScroll = () => {
+    if (!containerRef.current) return;
+    const idx = Math.round(containerRef.current.scrollTop / containerRef.current.clientHeight);
+    if (idx !== current) setCurrent(idx);
+  };
+
+  const handleLike = async (reelId) => {
+    const nowLiked = !liked[reelId];
+    setLiked(l => ({ ...l, [reelId]: nowLiked }));
+    setReels(r => r.map(x => x.id === reelId ? { ...x, likes_count: (x.likes_count || 0) + (nowLiked ? 1 : -1) } : x));
+    if (nowLiked) await supabase.from('reel_likes').insert({ reel_id: reelId, user_id: currentUser.id });
+    else await supabase.from('reel_likes').delete().eq('reel_id', reelId).eq('user_id', currentUser.id);
+  };
+
+  const handleShare = async (reel) => {
+    const url = window.location.origin + '/feed';
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Buddy AI Reel', text: reel.caption || 'Check this reel!', url }); }
+      catch (e) { if (e.name !== 'AbortError') showToast('📤 Shared!'); }
+    } else {
+      try { await navigator.clipboard.writeText(url); showToast('🔗 Link copied!'); }
+      catch { showToast('📤 ' + url); }
+    }
+  };
+
+  const handleDeleteReel = async (reelId) => {
+    if (!window.confirm('Delete this reel?')) return;
+    setReels(r => r.filter(x => x.id !== reelId));
+    await supabase.from('reel_likes').delete().eq('reel_id', reelId);
+    await supabase.from('reel_comments').delete().eq('reel_id', reelId);
+    await supabase.from('reels').delete().eq('id', reelId).eq('user_id', currentUser.id);
+    showToast('🗑️ Reel deleted');
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'black', overflow: 'hidden' }}>
+      {/* Top bar */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, padding: '48px 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'linear-gradient(180deg,rgba(0,0,0,.5),transparent)' }}>
+        <span onClick={onClose} style={{ fontSize: 22, cursor: 'pointer', color: 'white' }}>←</span>
+        <span style={{ fontSize: 16, fontWeight: 800, color: 'white' }}>🎬 Reels</span>
+        <span onClick={() => setShowUpload(true)} style={{ fontSize: 22, cursor: 'pointer', color: 'white' }}>📹</span>
+      </div>
+
+      {loading && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 40, animation: 'floaty 1.5s infinite' }}>🎬</div>
+          <p style={{ color: 'rgba(255,255,255,.7)', fontSize: 13 }}>Loading reels...</p>
+        </div>
+      )}
+
+      {!loading && reels.length === 0 && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14, padding: 30, textAlign: 'center' }}>
+          <div style={{ fontSize: 50 }}>🎬</div>
+          <p style={{ color: 'white', fontSize: 15, fontWeight: 600 }}>No reels yet!</p>
+          <p style={{ color: 'rgba(255,255,255,.6)', fontSize: 13 }}>Be the first to share a short video</p>
+          <button onClick={() => setShowUpload(true)} style={{ background: 'linear-gradient(135deg,#60A5FA,#2563EB)', color: 'white', border: 'none', borderRadius: 20, padding: '10px 24px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            📹 Upload First Reel
+          </button>
+        </div>
+      )}
+
+      {/* Vertical swipe feed */}
+      {!loading && reels.length > 0 && (
+        <div ref={containerRef} onScroll={handleScroll} style={{ height: '100%', overflowY: 'scroll', scrollSnapType: 'y mandatory', scrollbarWidth: 'none' }} className="ns">
+          {reels.map((reel, i) => (
+            <div key={reel.id} style={{ height: '100%', width: '100%', scrollSnapAlign: 'start', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+              <video
+                ref={el => videoRefs.current[i] = el}
+                src={reel.video_url}
+                loop
+                muted={false}
+                playsInline
+                onClick={e => { e.target.paused ? e.target.play() : e.target.pause(); }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+
+              {/* Bottom info */}
+              <div style={{ position: 'absolute', bottom: 24, left: 14, right: 70, color: 'white', zIndex: 5 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Av p={reel.profiles} size={32} idx={i} />
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>{reel.profiles?.full_name || reel.profiles?.username || 'User'}</span>
+                </div>
+                {reel.caption && <div style={{ fontSize: 13, lineHeight: 1.5, textShadow: '0 1px 4px rgba(0,0,0,.5)' }}>{reel.caption}</div>}
+              </div>
+
+              {/* Right side action buttons */}
+              <div style={{ position: 'absolute', right: 12, bottom: 30, zIndex: 5, display: 'flex', flexDirection: 'column', gap: 18, alignItems: 'center' }}>
+                <div onClick={() => handleLike(reel.id)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer' }}>
+                  <span style={{ fontSize: 28 }}>{liked[reel.id] ? '❤️' : '🤍'}</span>
+                  <span style={{ color: 'white', fontSize: 11, fontWeight: 600, textShadow: '0 1px 3px rgba(0,0,0,.5)' }}>{fmtN(reel.likes_count || 0)}</span>
+                </div>
+                <div onClick={() => setShowComments(reel.id)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer' }}>
+                  <span style={{ fontSize: 26 }}>💬</span>
+                  <span style={{ color: 'white', fontSize: 11, fontWeight: 600, textShadow: '0 1px 3px rgba(0,0,0,.5)' }}>{fmtN(reel.comments_count || 0)}</span>
+                </div>
+                <div onClick={() => handleShare(reel)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer' }}>
+                  <span style={{ fontSize: 26 }}>📤</span>
+                  <span style={{ color: 'white', fontSize: 11, fontWeight: 600, textShadow: '0 1px 3px rgba(0,0,0,.5)' }}>Share</span>
+                </div>
+                {reel.user_id === currentUser?.id && (
+                  <div onClick={() => handleDeleteReel(reel.id)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer' }}>
+                    <span style={{ fontSize: 24 }}>🗑️</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showUpload && currentUser && (
+        <ReelUploadSheet user={currentUser} showToast={showToast} onClose={() => setShowUpload(false)} onUploaded={(r) => { setReels(prev => [r, ...prev]); }} />
+      )}
+      {showComments && currentUser && (
+        <ReelCommentsSheet reelId={showComments} user={currentUser} onClose={() => setShowComments(null)}
+          onCommentAdded={(reelId) => setReels(r => r.map(x => x.id === reelId ? { ...x, comments_count: (x.comments_count || 0) + 1 } : x))} />
+      )}
+    </div>
+  );
+}
+
+// ── Reel Upload Sheet ──────────────────────────
+function ReelUploadSheet({user, onClose, onUploaded, showToast}) {
+  const [video, setVideo] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [caption, setCaption] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
+
+  const pickVideo = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (f.size > 50 * 1024 * 1024) { showToast('❌ Video must be under 50MB'); return; }
+    setVideo(f);
+    setPreview(URL.createObjectURL(f));
+  };
+
+  const submit = async () => {
+    if (!video) { showToast('Please select a video first'); return; }
+    setUploading(true);
+    try {
+      const ext = video.name.split('.').pop();
+      const path = `${user.id}_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('reels').upload(path, video);
+      if (upErr) { showToast('❌ Upload failed: ' + upErr.message); setUploading(false); return; }
+      const { data: { publicUrl } } = supabase.storage.from('reels').getPublicUrl(path);
+      const { data, error } = await supabase.from('reels')
+        .insert({ user_id: user.id, video_url: publicUrl, caption: caption.trim() })
+        .select('*, profiles(full_name,username,avatar_url)').single();
+      if (!error && data) { onUploaded(data); showToast('🎬 Reel uploaded!'); }
+      else showToast('❌ ' + (error?.message || 'Could not save reel'));
+    } catch (e) {
+      showToast('❌ Upload error: ' + e.message);
+    }
+    setUploading(false);
+    onClose();
+  };
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && !uploading && onClose()} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 300, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div style={{ background: 'white', borderRadius: '22px 22px 0 0', width: '100%', maxWidth: 480, padding: 20, animation: 'slideup .28s ease' }}>
+        <div style={{ width: 38, height: 4, background: '#e2e8f0', borderRadius: 2, margin: '0 auto 16px' }} />
+        <div style={{ fontSize: 16, fontWeight: 700, color: G.dark, marginBottom: 8 }}>🎬 Upload Reel</div>
+        <p style={{ fontSize: 12, color: G.gray, marginBottom: 14 }}>Short videos under 50MB work best. Vertical videos look great!</p>
+
+        {preview ? (
+          <div style={{ position: 'relative', marginBottom: 14, borderRadius: 14, overflow: 'hidden', background: '#000' }}>
+            <video src={preview} controls style={{ width: '100%', maxHeight: 280, display: 'block' }} />
+            <button onClick={() => { setVideo(null); setPreview(null); }} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,.6)', color: 'white', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', fontSize: 13 }}>✕</button>
+          </div>
+        ) : (
+          <button onClick={() => fileRef.current.click()} style={{ width: '100%', padding: '30px 14px', background: '#EFF6FF', border: '1.5px dashed #BFDBFE', borderRadius: 14, color: G.blue, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 32 }}>📹</span>
+            Tap to select a video
+          </button>
+        )}
+        <input ref={fileRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={pickVideo} />
+
+        <textarea value={caption} onChange={e => setCaption(e.target.value)} placeholder="Write a caption... ✨"
+          style={{ width: '100%', minHeight: 60, border: '1.5px solid #BFDBFE', borderRadius: 14, padding: '10px 14px', fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', color: G.dark, marginBottom: 14 }} />
+
+        <button onClick={submit} disabled={!video || uploading} style={{
+          width: '100%', padding: '13px',
+          background: video ? 'linear-gradient(135deg,#60A5FA,#2563EB)' : '#e2e8f0',
+          color: video ? 'white' : '#9CA3AF', border: 'none', borderRadius: 14,
+          fontSize: 14, fontWeight: 700, cursor: video ? 'pointer' : 'default', fontFamily: 'inherit'
+        }}>
+          {uploading ? '⏳ Uploading...' : '🚀 Post Reel'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Reel Comments Sheet ────────────────────────
+function ReelCommentsSheet({reelId, user, onClose, onCommentAdded}) {
+  const [comments, setComments] = useState([]);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    supabase.from('reel_comments').select('*, profiles(full_name,username,avatar_url)')
+      .eq('reel_id', reelId).order('created_at', { ascending: true })
+      .then(({ data }) => setComments(data || []));
+  }, [reelId]);
+
+  const send = async () => {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    const { data, error } = await supabase.from('reel_comments')
+      .insert({ reel_id: reelId, user_id: user.id, content: text.trim() })
+      .select('*, profiles(full_name,username,avatar_url)').single();
+    if (!error && data) { setComments(c => [...c, data]); onCommentAdded(reelId); }
+    setText(''); setSending(false);
+  };
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 400, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div style={{ background: 'white', borderRadius: '22px 22px 0 0', width: '100%', maxWidth: 480, padding: 18, maxHeight: '70vh', overflowY: 'auto', animation: 'slideup .28s ease' }}>
+        <div style={{ width: 38, height: 4, background: '#e2e8f0', borderRadius: 2, margin: '0 auto 14px' }} />
+        <div style={{ fontSize: 15, fontWeight: 700, color: G.dark, marginBottom: 14 }}>💬 Comments ({comments.length})</div>
+        {comments.length === 0 && <div style={{ textAlign: 'center', color: G.gray, padding: '20px 0', fontSize: 13 }}>No comments yet. Be the first! 👇</div>}
+        {comments.map((c, i) => (
+          <div key={c.id} style={{ display: 'flex', gap: 9, padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
+            <Av p={c.profiles} size={34} idx={i} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: G.dark }}>{c.profiles?.full_name || 'User'}</div>
+              <div style={{ fontSize: 12.5, color: '#475569', marginTop: 2 }}>{c.content}</div>
+            </div>
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
+          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Add a comment..."
+            style={{ flex: 1, border: '1.5px solid #BFDBFE', borderRadius: 18, padding: '9px 14px', fontSize: 12.5, outline: 'none', fontFamily: 'inherit' }} />
+          <button onClick={send} disabled={sending} style={{ width: 36, height: 36, background: G.blue, border: 'none', borderRadius: '50%', color: 'white', fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>➤</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CreateSheet({user,onClose,onPosted,showToast}){
   const[text,setText]=useState('');
   const[image,setImage]=useState(null);
@@ -1083,21 +1366,42 @@ export default function Feed(){
     showToast(now?'✅ Following!':'Unfollowed');
   };
 
-  const myStory=stories.find(s=>s.user_id===user?.id);
+  // ✅ FIX: get ALL my active stories (unlimited), not just the first one
+  const myStories = stories.filter(s=>s.user_id===user?.id).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  const hasMyStory = myStories.length>0;
+  const[storyQueue,setStoryQueue]=useState([]); // sequence of stories to view one after another
+  const[storyQueueIdx,setStoryQueueIdx]=useState(0);
+
+  const openStorySequence=(list,startIdx=0)=>{
+    setStoryQueue(list);
+    setStoryQueueIdx(startIdx);
+    setActiveStory(list[startIdx]);
+  };
+  const nextStoryInQueue=()=>{
+    const nextIdx=storyQueueIdx+1;
+    if(nextIdx<storyQueue.length){
+      setStoryQueueIdx(nextIdx);
+      setActiveStory(storyQueue[nextIdx]);
+    } else {
+      setActiveStory(null); setStoryQueue([]); setStoryQueueIdx(0);
+    }
+  };
 
   // ── BOTTOM NAV ────────────────────────────
-  // Home | Friends | [+] | AI Chat | Profile
+  // Home | Friends | [+] | Reels | AI Chat | Profile
   const navItems=[
     {id:'home',   icon:'🏠', label:'Home'},
     {id:'friends',icon:'👥', label:'Friends'},
     {id:'create', icon:'+',  isPlus:true},
-    {id:'aichat', icon:'🤖', label:'AI Chat'},
+    {id:'reels',  icon:'🎬', label:'Reels'},
+    {id:'aichat', icon:'🤖', label:'AI'},
     {id:'profile',icon:'👤', label:'Profile'},
   ];
 
   const handleNav=id=>{
     if(id==='profile'){navigate('/profile');return;}
-    if(id==='create'){setPanel('create');return;}
+    if(id==='create'){setPanel('create-choice');return;}
+    if(id==='reels'){setPanel('reels');setActiveNav('reels');return;}
     if(id==='aichat'){setPanel('ai-chat');setActiveNav('aichat');return;}
     if(id==='friends'){setPanel('friends');setActiveNav('friends');return;}
     if(id==='home'){
@@ -1125,9 +1429,31 @@ export default function Feed(){
       <Toast msg={toast}/>
 
       {/* ── OVERLAYS ── */}
-      {activeStory&&<StoryViewer story={activeStory} onClose={()=>setActiveStory(null)}/>}
+      {activeStory&&<StoryViewer story={activeStory} onClose={()=>{setActiveStory(null);setStoryQueue([]);setStoryQueueIdx(0);}} onNext={nextStoryInQueue}/>}
       {commentPostId&&user&&<CommentsSheet postId={commentPostId} user={user} onClose={()=>setCommentPostId(null)} onCommentAdded={handleCommentAdded}/>}
+      {panel==='create-choice'&&(
+        <div onClick={e=>e.target===e.currentTarget&&closePanel()} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:300,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+          <div style={{background:'white',borderRadius:'22px 22px 0 0',width:'100%',maxWidth:480,padding:20,animation:'slideup .28s ease'}}>
+            <div style={{width:38,height:4,background:'#e2e8f0',borderRadius:2,margin:'0 auto 16px'}}/>
+            <div style={{fontSize:15,fontWeight:700,color:G.dark,marginBottom:14}}>✨ Create</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+              <div onClick={()=>setPanel('create')} style={{background:G.lb,borderRadius:16,padding:'22px 12px',display:'flex',flexDirection:'column',alignItems:'center',gap:8,cursor:'pointer'}}>
+                <span style={{fontSize:34}}>📝</span>
+                <span style={{fontSize:13,fontWeight:700,color:G.dark}}>Post</span>
+                <span style={{fontSize:10,color:G.gray,textAlign:'center'}}>Photo + caption</span>
+              </div>
+              <div onClick={()=>setPanel('reel-upload')} style={{background:G.lb,borderRadius:16,padding:'22px 12px',display:'flex',flexDirection:'column',alignItems:'center',gap:8,cursor:'pointer'}}>
+                <span style={{fontSize:34}}>🎬</span>
+                <span style={{fontSize:13,fontWeight:700,color:G.dark}}>Reel</span>
+                <span style={{fontSize:10,color:G.gray,textAlign:'center'}}>Short video</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {panel==='create'&&user&&<CreateSheet user={user} showToast={showToast} onClose={closePanel} onPosted={p=>{setPosts(prev=>[p,...prev]);setCommentCounts(c=>({...c,[p.id]:0}));}}/>}
+      {panel==='reel-upload'&&user&&<ReelUploadSheet user={user} showToast={showToast} onClose={closePanel} onUploaded={()=>showToast('🎬 Reel posted! Check the Reels tab')}/>}
+      {panel==='reels'&&<ReelsPanel onClose={closePanel} currentUser={user} showToast={showToast}/>}
       {panel==='add-story'&&user&&<AddStorySheet user={user} showToast={showToast} onClose={closePanel} onAdded={s=>setStories(prev=>[s,...prev])}/>}
       {panel==='ai-chat'&&<AIChatPanel onClose={closePanel} currentUser={user} showToast={showToast}/>}
       {panel==='friends'&&<FriendsPanel onClose={closePanel} currentUser={user} allUsers={allUsers} following={following} onFollow={handleFollow} showToast={showToast}/>}
@@ -1164,18 +1490,27 @@ export default function Feed(){
           {/* STORIES */}
           <div style={{background:'white',padding:'10px 0 12px',borderBottom:'1px solid #e8f0fe'}}>
             <div className="ns" style={{display:'flex',gap:12,overflowX:'auto',padding:'0 14px'}}>
-              {/* Add Story */}
-              <div onClick={()=>myStory?setActiveStory(myStory):setPanel('add-story')} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,cursor:'pointer',flexShrink:0}}>
-                <div style={{width:62,height:62,borderRadius:'50%',background:'#e2e8f0',padding:2.5,position:'relative'}}>
-                  <div style={{width:'100%',height:'100%',borderRadius:'50%',background:'white',padding:2,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-                    {profile?.avatar_url
-                      ?<img src={profile.avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}}/>
-                      :<div style={{width:'100%',height:'100%',borderRadius:'50%',background:'linear-gradient(135deg,#93C5FD,#1D4ED8)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,color:'white',fontWeight:700}}>{ini(profile?.full_name||user?.email||'Y')}</div>
-                    }
+              {/* Your Story circle — supports unlimited stories like Instagram */}
+              <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,cursor:'pointer',flexShrink:0}}>
+                <div style={{position:'relative'}}>
+                  {/* Tapping the ring views your stories in sequence (if any exist) */}
+                  <div onClick={()=>hasMyStory?openStorySequence(myStories,0):setPanel('add-story')}
+                    style={{width:62,height:62,borderRadius:'50%',background:hasMyStory?'linear-gradient(135deg,#60A5FA,#2563EB)':'#e2e8f0',padding:2.5,position:'relative'}}>
+                    <div style={{width:'100%',height:'100%',borderRadius:'50%',background:'white',padding:2,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+                      {profile?.avatar_url
+                        ?<img src={profile.avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}}/>
+                        :<div style={{width:'100%',height:'100%',borderRadius:'50%',background:'linear-gradient(135deg,#93C5FD,#1D4ED8)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,color:'white',fontWeight:700}}>{ini(profile?.full_name||user?.email||'Y')}</div>
+                      }
+                    </div>
                   </div>
-                  <div style={{position:'absolute',bottom:0,right:0,width:18,height:18,background:myStory?'#22C55E':G.blue,borderRadius:'50%',border:'2px solid white',color:'white',fontSize:myStory?10:14,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>{myStory?'✓':'+'}</div>
+                  {/* Small + button always lets you add ANOTHER story, even if you already have one */}
+                  <div onClick={()=>setPanel('add-story')} style={{position:'absolute',bottom:0,right:0,width:20,height:20,background:G.blue,borderRadius:'50%',border:'2px solid white',color:'white',fontSize:14,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1,cursor:'pointer',boxShadow:'0 1px 4px rgba(0,0,0,.2)'}}>+</div>
+                  {/* Small badge showing how many active stories you have */}
+                  {myStories.length>1&&(
+                    <div style={{position:'absolute',top:-4,left:-4,background:'#22C55E',color:'white',fontSize:9,fontWeight:700,width:18,height:18,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',border:'2px solid white'}}>{myStories.length}</div>
+                  )}
                 </div>
-                <span style={{fontSize:10,color:G.dark,fontWeight:500,maxWidth:62,textAlign:'center'}}>{myStory?'Your Story':'Add Story'}</span>
+                <span style={{fontSize:10,color:G.dark,fontWeight:500,maxWidth:62,textAlign:'center'}}>{hasMyStory?'Your Story':'Add Story'}</span>
               </div>
               {/* Other users' stories */}
               {stories.filter(s=>s.user_id!==user?.id).map((s,i)=>(
