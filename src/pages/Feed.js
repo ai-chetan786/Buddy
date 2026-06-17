@@ -638,6 +638,154 @@ function CommentsSheet({postId,user,onClose,onCommentAdded}){
 }
 
 // ══════════════════════════════════════════════
+// NOTIFICATIONS PANEL — real, saved to Supabase
+// ══════════════════════════════════════════════
+function NotificationsPanel({onClose, currentUser, showToast}) {
+  const [notifs, setNotifs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadNotifs();
+    const channel = supabase.channel(`notifs_${currentUser.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'notifications',
+        filter: `user_id=eq.${currentUser.id}`
+      }, () => { loadNotifs(); }).subscribe();
+    return () => { channel.unsubscribe(); };
+  }, [currentUser.id]);
+
+  const loadNotifs = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('notifications')
+      .select('*, profiles!notifications_actor_id_fkey(full_name,username,avatar_url)')
+      .eq('user_id', currentUser.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    setNotifs(data || []);
+    setLoading(false);
+    await supabase.from('notifications').update({ is_read: true }).eq('user_id', currentUser.id).eq('is_read', false);
+  };
+
+  const iconFor = (type) => type === 'like' ? '❤️' : type === 'comment' ? '💬' : type === 'follow' ? '👥' : '🔔';
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: G.bg, display: 'flex', flexDirection: 'column', fontFamily: "'Segoe UI',-apple-system,sans-serif" }}>
+      <div style={{ flexShrink: 0, background: 'linear-gradient(135deg,#2563EB,#1D4ED8)', padding: '48px 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span onClick={onClose} style={{ fontSize: 22, cursor: 'pointer', color: 'white' }}>←</span>
+        <span style={{ fontSize: 17, fontWeight: 800, color: 'white' }}>🔔 Notifications</span>
+        <div style={{ width: 28 }} />
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'none' }}>
+        {loading && <div style={{ textAlign: 'center', color: G.gray, padding: 40 }}>Loading...</div>}
+        {!loading && notifs.length === 0 && (
+          <div style={{ textAlign: 'center', color: G.gray, padding: '50px 20px' }}>
+            <div style={{ fontSize: 44, marginBottom: 10 }}>🔔</div>
+            No notifications yet.<br />
+            <span style={{ fontSize: 12 }}>Likes, comments, and follows will show up here!</span>
+          </div>
+        )}
+        {!loading && notifs.map((n, i) => (
+          <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid #e8f0fe', background: 'white' }}>
+            <div style={{ position: 'relative' }}>
+              <Av p={n.profiles} size={44} idx={i} />
+              <div style={{ position: 'absolute', bottom: -2, right: -2, width: 20, height: 20, borderRadius: '50%', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, boxShadow: '0 1px 4px rgba(0,0,0,.15)' }}>{iconFor(n.type)}</div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, color: G.dark }}>
+                <b style={{ fontWeight: 700 }}>{n.profiles?.full_name || n.profiles?.username || 'Someone'}</b> {n.message}
+              </div>
+              <div style={{ fontSize: 11, color: G.gray, marginTop: 2 }}>{ago(n.created_at)} ago</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════
+// USER SEARCH PANEL — find people by name
+// ══════════════════════════════════════════════
+function SearchPanel({onClose, currentUser, following, onFollow, navigate}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [recentUsers, setRecentUsers] = useState([]);
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    supabase.from('profiles').select('id,full_name,username,avatar_url')
+      .neq('id', currentUser.id).limit(10)
+      .then(({ data }) => setRecentUsers(data || []));
+  }, [currentUser.id]);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!query.trim()) { setResults([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      const { data } = await supabase
+        .from('profiles')
+        .select('id,full_name,username,avatar_url')
+        .neq('id', currentUser.id)
+        .or(`full_name.ilike.%${query}%,username.ilike.%${query}%`)
+        .limit(20);
+      setResults(data || []);
+      setSearching(false);
+    }, 350);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query, currentUser.id]);
+
+  const list = query.trim() ? results : recentUsers;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: G.bg, display: 'flex', flexDirection: 'column', fontFamily: "'Segoe UI',-apple-system,sans-serif" }}>
+      <div style={{ flexShrink: 0, background: 'linear-gradient(135deg,#2563EB,#1D4ED8)', padding: '48px 16px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span onClick={onClose} style={{ fontSize: 22, cursor: 'pointer', color: 'white' }}>←</span>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,.2)', borderRadius: 20, padding: '8px 14px', gap: 8 }}>
+            <span style={{ fontSize: 16, color: 'white' }}>🔍</span>
+            <input autoFocus value={query} onChange={e => setQuery(e.target.value)}
+              placeholder="Search by name or username..."
+              style={{ flex: 1, border: 'none', background: 'transparent', color: 'white', fontSize: 14, outline: 'none', fontFamily: 'inherit' }} />
+            {query && <span onClick={() => setQuery('')} style={{ color: 'white', cursor: 'pointer', fontSize: 14 }}>✕</span>}
+          </div>
+        </div>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'none', padding: '10px 0' }}>
+        {!query.trim() && <div style={{ padding: '6px 16px', fontSize: 12, fontWeight: 700, color: G.gray }}>SUGGESTED</div>}
+        {searching && <div style={{ textAlign: 'center', color: G.gray, padding: 30 }}>Searching...</div>}
+        {!searching && query.trim() && list.length === 0 && (
+          <div style={{ textAlign: 'center', color: G.gray, padding: '40px 20px' }}>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>🔍</div>
+            No users found for "{query}"
+          </div>
+        )}
+        {list.map((u, i) => (
+          <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: 'white', borderBottom: '1px solid #f1f5f9' }}>
+            <div onClick={() => { onClose(); navigate('/profile'); }} style={{ cursor: 'pointer' }}>
+              <Av p={u} size={46} idx={i} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: G.dark }}>{u.full_name || u.username || 'User'}</div>
+              <div style={{ fontSize: 12, color: G.gray }}>{u.username ? '@' + u.username : ''}</div>
+            </div>
+            <button onClick={() => onFollow(u.id)} style={{
+              background: following[u.id] ? G.lb : G.blue, color: following[u.id] ? G.blue : 'white',
+              border: following[u.id] ? `1.5px solid ${G.sky}` : 'none', borderRadius: 20,
+              padding: '6px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit'
+            }}>
+              {following[u.id] ? 'Following' : 'Follow'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════
 // CREATE POST SHEET
 // ══════════════════════════════════════════════
 function CreateSheet({user,onClose,onPosted,showToast}){
@@ -807,7 +955,8 @@ export default function Feed(){
   const[following,setFollowing]=useState({});
 
   // Panel states — which overlay is open
-  const[panel,setPanel]=useState(null); // null | 'ai-chat' | 'friends' | 'create' | 'add-story'
+  const[panel,setPanel]=useState(null); // null | 'ai-chat' | 'friends' | 'create' | 'add-story' | 'notifications' | 'search'
+  const[unreadCount,setUnreadCount]=useState(0);
   const[activeNav,setActiveNav]=useState('home');
   const[activeStory,setActiveStory]=useState(null);
   const[commentPostId,setCommentPostId]=useState(null);
@@ -826,13 +975,14 @@ export default function Feed(){
 
   const loadAll=async uid=>{
     setLoading(true);
-    const[{data:prof},{data:users},{data:postsData},{data:lk},{data:fol},{data:storiesData}]=await Promise.all([
+    const[{data:prof},{data:users},{data:postsData},{data:lk},{data:fol},{data:storiesData},{count:unread}]=await Promise.all([
       supabase.from('profiles').select('*').eq('id',uid).single(),
       supabase.from('profiles').select('id,full_name,username,avatar_url').neq('id',uid).limit(20),
       supabase.from('posts').select('*,profiles(full_name,username,avatar_url)').order('created_at',{ascending:false}).limit(50),
       supabase.from('likes').select('post_id').eq('user_id',uid),
       supabase.from('follows').select('following_id').eq('follower_id',uid),
       supabase.from('stories').select('*, profiles(id,full_name,username,avatar_url)').gt('expires_at',new Date().toISOString()).order('created_at',{ascending:false}),
+      supabase.from('notifications').select('id',{count:'exact',head:true}).eq('user_id',uid).eq('is_read',false),
     ]);
     if(prof)setProfile(prof);
     if(users)setAllUsers(users);
@@ -846,8 +996,19 @@ export default function Feed(){
     if(lk){const lm={};lk.forEach(l=>{lm[l.post_id]=true;});setLikedPosts(lm);}
     if(fol){const fm={};fol.forEach(f=>{fm[f.following_id]=true;});setFollowing(fm);}
     if(storiesData)setStories(storiesData);
+    setUnreadCount(unread||0);
     setLoading(false);
   };
+
+  // Live notification badge — listens for new notifications even while browsing
+  useEffect(()=>{
+    if(!user)return;
+    const ch=supabase.channel(`notif_badge_${user.id}`)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:`user_id=eq.${user.id}`},
+        ()=>{ setUnreadCount(c=>c+1); }
+      ).subscribe();
+    return ()=>{ ch.unsubscribe(); };
+  },[user]);
 
   const handleLike=async(postId,nowLiked)=>{
     setLikedPosts(l=>({...l,[postId]:nowLiked}));
@@ -970,13 +1131,15 @@ export default function Feed(){
       {panel==='add-story'&&user&&<AddStorySheet user={user} showToast={showToast} onClose={closePanel} onAdded={s=>setStories(prev=>[s,...prev])}/>}
       {panel==='ai-chat'&&<AIChatPanel onClose={closePanel} currentUser={user} showToast={showToast}/>}
       {panel==='friends'&&<FriendsPanel onClose={closePanel} currentUser={user} allUsers={allUsers} following={following} onFollow={handleFollow} showToast={showToast}/>}
+      {panel==='notifications'&&<NotificationsPanel onClose={()=>{setUnreadCount(0);closePanel();}} currentUser={user} showToast={showToast}/>}
+      {panel==='search'&&<SearchPanel onClose={closePanel} currentUser={user} following={following} onFollow={handleFollow} navigate={navigate}/>}
 
       {/* ── MAIN APP ── */}
       <div style={{width:'100%',minHeight:'100dvh',background:G.bg,display:'flex',flexDirection:'column',fontFamily:"'Segoe UI',-apple-system,sans-serif",maxWidth:480,margin:'0 auto'}}>
 
         {/* TOP BAR */}
         <div style={{position:'sticky',top:0,zIndex:100,background:'white',padding:'14px 18px 10px',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid #e8f0fe',boxShadow:'0 1px 8px rgba(37,99,235,.06)'}}>
-          <span onClick={()=>showToast('🔍 Search coming soon!')} style={{fontSize:21,color:G.gray,cursor:'pointer'}}>🔍</span>
+          <span onClick={()=>setPanel('search')} style={{fontSize:21,color:G.gray,cursor:'pointer'}}>🔍</span>
           <div style={{textAlign:'center'}}>
             <div style={{display:'flex',alignItems:'center',gap:7,fontSize:18,fontWeight:800,color:G.dark,justifyContent:'center'}}>
               <div style={{width:32,height:32,background:'linear-gradient(135deg,#60A5FA,#2563EB)',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>🤖</div>
@@ -985,9 +1148,9 @@ export default function Feed(){
             <div style={{fontSize:9,color:G.gray}}>Your AI Social Community</div>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
-            <div style={{position:'relative',cursor:'pointer'}} onClick={()=>showToast('🔔 Notifications coming soon!')}>
+            <div style={{position:'relative',cursor:'pointer'}} onClick={()=>setPanel('notifications')}>
               <span style={{fontSize:21}}>🔔</span>
-              <div style={{position:'absolute',top:-4,right:-4,background:G.red,color:'white',fontSize:8,width:14,height:14,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>3</div>
+              {unreadCount>0&&<div style={{position:'absolute',top:-4,right:-4,background:G.red,color:'white',fontSize:8,width:14,height:14,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>{unreadCount>9?'9+':unreadCount}</div>}
             </div>
             <div onClick={()=>navigate('/profile')} style={{width:30,height:30,borderRadius:'50%',overflow:'hidden',cursor:'pointer',background:'linear-gradient(135deg,#93C5FD,#1D4ED8)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:13,fontWeight:700}}>
               {profile?.avatar_url?<img src={profile.avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:ini(profile?.full_name||user?.email||'C')}
