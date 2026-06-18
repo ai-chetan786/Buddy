@@ -601,16 +601,8 @@ function CommentsSheet({postId,user,onClose,onCommentAdded}){
       .select('*,profiles(full_name,username,avatar_url)').single();
     if(!error&&data){
       setComments(c=>[...c,data]);
-      // ✅ FIX: increment comments_count in posts table
-      await supabase.from('posts').update({comments_count:supabase.rpc?undefined:undefined}).eq('id',postId);
-      // Use raw SQL increment
-      await supabase.rpc('increment_comments_count',{post_id_param:postId}).catch(()=>{
-        // Fallback: manual update
-        supabase.from('posts').select('comments_count').eq('id',postId).single().then(({data:pd})=>{
-          if(pd) supabase.from('posts').update({comments_count:(pd.comments_count||0)+1}).eq('id',postId);
-        });
-      });
-      onCommentAdded(postId); // notify parent to update count
+      // comments_count is now updated automatically by a database trigger
+      onCommentAdded(postId); // tell parent to bump the local displayed count
     }
     setText(''); setSending(false);
   };
@@ -1512,20 +1504,33 @@ export default function Feed(){
                 </div>
                 <span style={{fontSize:10,color:G.dark,fontWeight:500,maxWidth:62,textAlign:'center'}}>{hasMyStory?'Your Story':'Add Story'}</span>
               </div>
-              {/* Other users' stories */}
-              {stories.filter(s=>s.user_id!==user?.id).map((s,i)=>(
-                <div key={s.id} onClick={()=>setActiveStory(s)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,cursor:'pointer',flexShrink:0}}>
-                  <div style={{width:62,height:62,borderRadius:'50%',background:GRAD[(i+1)%GRAD.length],padding:2.5}}>
-                    <div style={{width:'100%',height:'100%',borderRadius:'50%',background:'white',padding:2,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-                      {s.profiles?.avatar_url
-                        ?<img src={s.profiles.avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}}/>
-                        :<div style={{width:'100%',height:'100%',borderRadius:'50%',background:GRAD[(i+1)%GRAD.length],display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,color:'white',fontWeight:700}}>{ini(s.profiles?.full_name||s.profiles?.username)}</div>
-                      }
+              {/* Other users' stories — grouped one circle per PERSON, not per story */}
+              {Object.values(
+                stories.filter(s=>s.user_id!==user?.id).reduce((acc,s)=>{
+                  if(!acc[s.user_id]) acc[s.user_id]=[];
+                  acc[s.user_id].push(s);
+                  return acc;
+                },{})
+              ).map((userStories,i)=>{
+                const s=userStories[0]; // first story used for the avatar preview
+                const sortedStories=[...userStories].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+                return(
+                  <div key={s.user_id} onClick={()=>openStorySequence(sortedStories,0)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,cursor:'pointer',flexShrink:0}}>
+                    <div style={{width:62,height:62,borderRadius:'50%',background:GRAD[(i+1)%GRAD.length],padding:2.5,position:'relative'}}>
+                      <div style={{width:'100%',height:'100%',borderRadius:'50%',background:'white',padding:2,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+                        {s.profiles?.avatar_url
+                          ?<img src={s.profiles.avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}}/>
+                          :<div style={{width:'100%',height:'100%',borderRadius:'50%',background:GRAD[(i+1)%GRAD.length],display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,color:'white',fontWeight:700}}>{ini(s.profiles?.full_name||s.profiles?.username)}</div>
+                        }
+                      </div>
+                      {sortedStories.length>1&&(
+                        <div style={{position:'absolute',top:-4,left:-4,background:'#22C55E',color:'white',fontSize:9,fontWeight:700,width:18,height:18,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',border:'2px solid white'}}>{sortedStories.length}</div>
+                      )}
                     </div>
+                    <span style={{fontSize:10,color:G.dark,fontWeight:500,maxWidth:62,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.profiles?.full_name||s.profiles?.username||'User'}</span>
                   </div>
-                  <span style={{fontSize:10,color:G.dark,fontWeight:500,maxWidth:62,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.profiles?.full_name||s.profiles?.username||'User'}</span>
-                </div>
-              ))}
+                );
+              })}
               {stories.filter(s=>s.user_id!==user?.id).length===0&&(
                 <div style={{display:'flex',alignItems:'center',color:G.gray,fontSize:11,padding:'8px 4px',flexShrink:0,fontStyle:'italic'}}>No stories yet — be first! ✨</div>
               )}
