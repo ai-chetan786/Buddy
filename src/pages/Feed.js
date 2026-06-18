@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
+import BuddyCamera from '../components/BuddyCamera';
 
 /* ============================================================
    BUDDY AI — Feed.js  (Feed IS the home)
@@ -1428,20 +1429,35 @@ export default function Feed(){
           <div style={{background:'white',borderRadius:'22px 22px 0 0',width:'100%',maxWidth:480,padding:20,animation:'slideup .28s ease'}}>
             <div style={{width:38,height:4,background:'#e2e8f0',borderRadius:2,margin:'0 auto 16px'}}/>
             <div style={{fontSize:15,fontWeight:700,color:G.dark,marginBottom:14}}>✨ Create</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-              <div onClick={()=>setPanel('create')} style={{background:G.lb,borderRadius:16,padding:'22px 12px',display:'flex',flexDirection:'column',alignItems:'center',gap:8,cursor:'pointer'}}>
-                <span style={{fontSize:34}}>📝</span>
-                <span style={{fontSize:13,fontWeight:700,color:G.dark}}>Post</span>
-                <span style={{fontSize:10,color:G.gray,textAlign:'center'}}>Photo + caption</span>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+              <div onClick={()=>setPanel('camera')} style={{background:G.lb,borderRadius:16,padding:'18px 8px',display:'flex',flexDirection:'column',alignItems:'center',gap:7,cursor:'pointer'}}>
+                <span style={{fontSize:30}}>⚡</span>
+                <span style={{fontSize:12,fontWeight:700,color:G.dark}}>Camera</span>
+                <span style={{fontSize:9,color:G.gray,textAlign:'center'}}>Live filters</span>
               </div>
-              <div onClick={()=>setPanel('reel-upload')} style={{background:G.lb,borderRadius:16,padding:'22px 12px',display:'flex',flexDirection:'column',alignItems:'center',gap:8,cursor:'pointer'}}>
-                <span style={{fontSize:34}}>🎬</span>
-                <span style={{fontSize:13,fontWeight:700,color:G.dark}}>Reel</span>
-                <span style={{fontSize:10,color:G.gray,textAlign:'center'}}>Short video</span>
+              <div onClick={()=>setPanel('create')} style={{background:G.lb,borderRadius:16,padding:'18px 8px',display:'flex',flexDirection:'column',alignItems:'center',gap:7,cursor:'pointer'}}>
+                <span style={{fontSize:30}}>📝</span>
+                <span style={{fontSize:12,fontWeight:700,color:G.dark}}>Post</span>
+                <span style={{fontSize:9,color:G.gray,textAlign:'center'}}>Photo + caption</span>
+              </div>
+              <div onClick={()=>setPanel('reel-upload')} style={{background:G.lb,borderRadius:16,padding:'18px 8px',display:'flex',flexDirection:'column',alignItems:'center',gap:7,cursor:'pointer'}}>
+                <span style={{fontSize:30}}>🎬</span>
+                <span style={{fontSize:12,fontWeight:700,color:G.dark}}>Reel</span>
+                <span style={{fontSize:9,color:G.gray,textAlign:'center'}}>Short video</span>
               </div>
             </div>
           </div>
         </div>
+      )}
+      {panel==='camera'&&user&&(
+        <BuddyCamera
+          user={user}
+          showToast={showToast}
+          onClose={closePanel}
+          onPosted={p=>{setPosts(prev=>[p,...prev]);setCommentCounts(c=>({...c,[p.id]:0}));}}
+          onStoryAdded={s=>setStories(prev=>[s,...prev])}
+          onOpenReelUpload={()=>setPanel('reel-upload')}
+        />
       )}
       {panel==='create'&&user&&<CreateSheet user={user} showToast={showToast} onClose={closePanel} onPosted={p=>{setPosts(prev=>[p,...prev]);setCommentCounts(c=>({...c,[p.id]:0}));}}/>}
       {panel==='reel-upload'&&user&&<ReelUploadSheet user={user} showToast={showToast} onClose={closePanel} onUploaded={()=>showToast('🎬 Reel posted! Check the Reels tab')}/>}
