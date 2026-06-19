@@ -1192,7 +1192,6 @@ function BuddyCamera({ user, onClose, showToast, onPosted, onStoryAdded, onOpenR
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
       particleIntervalsRef.current.forEach(id => clearInterval(id));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { startCamera(); }, [facingMode, startCamera]);
@@ -1221,7 +1220,6 @@ function BuddyCamera({ user, onClose, showToast, onPosted, onStoryAdded, onOpenR
   useEffect(() => {
     clearParticles();
     if (activeFilter.par && activeFilter.par.length) spawnParticles(activeFilter.par);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCat, activeFilterIdx]);
 
   const selectCategory = (cat) => { setActiveCat(cat); setActiveFilterIdx(0); };
