@@ -11,7 +11,7 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'imageBase64 required' });
   }
 
-  const HF_TOKEN = process.env.HF_TOKEN || process.env.REACT_APP_HF_TOKEN;
+  const HF_TOKEN = process.env.HF_API_KEY || process.env.HF_TOKEN || process.env.REACT_APP_HF_TOKEN;
   if (!HF_TOKEN) {
     return res.status(500).json({ error: 'AI Enhance not configured. Add HF_TOKEN in Vercel env vars.' });
   }
