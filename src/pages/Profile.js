@@ -278,6 +278,7 @@ export default function Profile() {
   const [user,    setUser]    = useState(null);
   const [profile, setProfile] = useState(null);
   const [posts,   setPosts]   = useState([]);
+  const [savedPhotos, setSavedPhotos] = useState([]); // Buddy Camera "Save" photos
   const [myStory, setMyStory] = useState(null); // user's active story
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -316,6 +317,12 @@ export default function Profile() {
     const { data: postsData } = await supabase
       .from('posts').select('*').eq('user_id', uid).order('created_at', { ascending: false });
     setPosts(postsData || []);
+
+    // Saved Buddy Camera photos (from "Save" button)
+    const { data: savedData, error: savedErr } = await supabase
+      .from('camera_photos').select('*').eq('user_id', uid).order('created_at', { ascending: false });
+    if (savedErr) console.warn('camera_photos load error (table may not exist yet):', savedErr.message);
+    setSavedPhotos(savedData || []);
 
     // My active story (not expired)
     const { data: storyData } = await supabase
@@ -364,6 +371,12 @@ export default function Profile() {
     await supabase.from('comments').delete().eq('post_id', postId);
     await supabase.from('posts').delete().eq('id', postId).eq('user_id', user.id);
     setPosts(prev => prev.filter(p => p.id !== postId));
+  };
+
+  const handleDeleteSavedPhoto = async (photoId) => {
+    if (!window.confirm('Delete this saved photo?')) return;
+    setSavedPhotos(prev => prev.filter(p => p.id !== photoId));
+    await supabase.from('camera_photos').delete().eq('id', photoId).eq('user_id', user.id);
   };
 
   const handleDeleteStory = async () => {
@@ -514,6 +527,36 @@ export default function Profile() {
             </div>
           </div>
         )}
+
+        {/* MY SAVED PHOTOS — from Buddy Camera "Save" button */}
+        <div style={{ margin: '12px 10px 0' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#1E293B', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+            ⚡ Saved Photos
+            <span style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 400 }}>({savedPhotos.length})</span>
+          </div>
+          {savedPhotos.length === 0 ? (
+            <div style={{ background: 'white', borderRadius: 16, padding: 24, textAlign: 'center', boxShadow: '0 2px 10px rgba(37,99,235,.07)' }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📷</div>
+              <div style={{ fontSize: 13, color: '#9CA3AF' }}>Photos you save from Buddy Camera will appear here</div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 3 }}>
+              {savedPhotos.map(photo => (
+                <div key={photo.id} style={{ position: 'relative', paddingBottom: '100%', background: '#F0F4FF', borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', inset: 0 }}>
+                    <img src={photo.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.35)', opacity: 0, transition: 'opacity .2s', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                      onMouseLeave={e => e.currentTarget.style.opacity = 0}>
+                      {photo.filter_name && <div style={{ color: 'white', fontSize: 10, fontWeight: 600 }}>✨ {photo.filter_name}</div>}
+                      <button onClick={() => handleDeleteSavedPhoto(photo.id)} style={{ marginTop: 4, background: 'rgba(239,68,68,.8)', border: 'none', borderRadius: 10, padding: '3px 8px', color: 'white', fontSize: 10, cursor: 'pointer' }}>🗑️</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* MY POSTS */}
         <div style={{ margin: '12px 10px 0' }}>
