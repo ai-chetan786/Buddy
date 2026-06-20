@@ -534,7 +534,11 @@ function AddStorySheet({user,onClose,onAdded,showToast}){
         <div style={{fontSize:16,fontWeight:700,color:G.dark,marginBottom:8}}>📸 Add Your Story</div>
         <p style={{fontSize:12,color:G.gray,marginBottom:14}}>Visible to everyone for <strong>24 hours</strong>, then disappears.</p>
         <textarea value={caption} onChange={e=>setCaption(e.target.value)} placeholder="Write something... ✨" style={{width:'100%',minHeight:80,border:'1.5px solid #BFDBFE',borderRadius:14,padding:'10px 14px',fontSize:13,outline:'none',resize:'none',fontFamily:'inherit',color:G.dark,marginBottom:12}}/>
-        {preview&&<div style={{position:'relative',marginBottom:12}}><img src={preview} alt="" style={{width:'100%',maxHeight:200,objectFit:'cover',borderRadius:12}}/><button onClick={()=>{setImage(null);setPreview(null);}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,.5)',color:'white',border:'none',borderRadius:'50%',width:26,height:26,cursor:'pointer',fontSize:12}}>✕</button></div>}
+        {preview&&<div style={{position:'relative',marginBottom:12,width:'100%',maxWidth:160,aspectRatio:'9 / 16',margin:'0 auto 12px',borderRadius:14,overflow:'hidden',background:'#000'}}>
+          <img src={preview} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+          <button onClick={()=>{setImage(null);setPreview(null);}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,.5)',color:'white',border:'none',borderRadius:'50%',width:26,height:26,cursor:'pointer',fontSize:12}}>✕</button>
+          <div style={{position:'absolute',bottom:6,left:6,background:'rgba(0,0,0,.5)',color:'white',borderRadius:8,padding:'2px 7px',fontSize:9,fontWeight:600}}>9:16 preview</div>
+        </div>}
         <button onClick={()=>fileRef.current.click()} style={{width:'100%',padding:'11px',background:'#EFF6FF',border:'1.5px dashed #BFDBFE',borderRadius:12,color:G.blue,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',marginBottom:12}}>📷 {image?'Change Photo':'Add Photo (optional)'}</button>
         <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={pickImg}/>
         <button onClick={submit} disabled={saving||(!caption.trim()&&!image)} style={{width:'100%',padding:'13px',background:caption.trim()||image?'linear-gradient(135deg,#60A5FA,#2563EB)':'#e2e8f0',color:caption.trim()||image?'white':'#9CA3AF',border:'none',borderRadius:14,fontSize:14,fontWeight:700,cursor:caption.trim()||image?'pointer':'default',fontFamily:'inherit'}}>
@@ -892,11 +896,16 @@ function ReelsPanel({onClose, currentUser, showToast}) {
         </div>
       )}
 
-      {/* Vertical swipe feed */}
+      {/* Vertical swipe feed — constrained to a real 9:16 box like Instagram/TikTok mobile,
+          never stretched full-bleed on wide screens (laptop/tablet) */}
       {!loading && reels.length > 0 && (
-        <div ref={containerRef} onScroll={handleScroll} style={{ height: '100%', overflowY: 'scroll', scrollSnapType: 'y mandatory', scrollbarWidth: 'none' }} className="ns">
+        <div ref={containerRef} onScroll={handleScroll} style={{ height: '100%', overflowY: 'scroll', scrollSnapType: 'y mandatory', scrollbarWidth: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center' }} className="ns">
           {reels.map((reel, i) => (
-            <div key={reel.id} style={{ height: '100%', width: '100%', scrollSnapAlign: 'start', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+            <div key={reel.id} style={{ height: '100%', width: '100%', maxWidth: 480, scrollSnapAlign: 'start', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', overflow: 'hidden' }}>
+              {/* Blurred backdrop fills any empty space instead of stretching the real video */}
+              <video src={reel.video_url} muted loop playsInline aria-hidden="true"
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(40px) brightness(.45)', transform: 'scale(1.2)', zIndex: 0 }} />
+              {/* Real video — kept at its true 9:16 shape, never cropped or stretched */}
               <video
                 ref={el => videoRefs.current[i] = el}
                 src={reel.video_url}
@@ -904,7 +913,7 @@ function ReelsPanel({onClose, currentUser, showToast}) {
                 muted={false}
                 playsInline
                 onClick={e => { e.target.paused ? e.target.play() : e.target.pause(); }}
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', maxWidth: 480, aspectRatio: '9 / 16', objectFit: 'contain', margin: '0 auto' }}
               />
 
               {/* Bottom info */}
@@ -956,16 +965,34 @@ function ReelsPanel({onClose, currentUser, showToast}) {
 function ReelUploadSheet({user, onClose, onUploaded, showToast}) {
   const [video, setVideo] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [duration, setDuration] = useState(null); // seconds, read from the actual video file
   const [caption, setCaption] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
+
+  const MAX_DURATION = 60; // seconds — matches the 15/30/60s spec, hard cap at 60
 
   const pickVideo = (e) => {
     const f = e.target.files[0];
     if (!f) return;
     if (f.size > 50 * 1024 * 1024) { showToast('❌ Video must be under 50MB'); return; }
-    setVideo(f);
-    setPreview(URL.createObjectURL(f));
+
+    // Read real duration from the video file before accepting it
+    const tempUrl = URL.createObjectURL(f);
+    const probe = document.createElement('video');
+    probe.preload = 'metadata';
+    probe.src = tempUrl;
+    probe.onloadedmetadata = () => {
+      const dur = probe.duration;
+      if (dur > MAX_DURATION) {
+        showToast(`❌ Reels must be ${MAX_DURATION}s or shorter (this is ${Math.round(dur)}s)`);
+        URL.revokeObjectURL(tempUrl);
+        return;
+      }
+      setDuration(Math.round(dur));
+      setVideo(f);
+      setPreview(tempUrl);
+    };
   };
 
   const submit = async () => {
@@ -994,12 +1021,15 @@ function ReelUploadSheet({user, onClose, onUploaded, showToast}) {
       <div style={{ background: 'white', borderRadius: '22px 22px 0 0', width: '100%', maxWidth: 480, padding: 20, animation: 'slideup .28s ease' }}>
         <div style={{ width: 38, height: 4, background: '#e2e8f0', borderRadius: 2, margin: '0 auto 16px' }} />
         <div style={{ fontSize: 16, fontWeight: 700, color: G.dark, marginBottom: 8 }}>🎬 Upload Reel</div>
-        <p style={{ fontSize: 12, color: G.gray, marginBottom: 14 }}>Short videos under 50MB work best. Vertical videos look great!</p>
+        <p style={{ fontSize: 12, color: G.gray, marginBottom: 14 }}>Best size: <strong>1080×1920 (9:16 vertical)</strong>, up to <strong>60 seconds</strong>, under 50MB.</p>
 
         {preview ? (
           <div style={{ position: 'relative', marginBottom: 14, borderRadius: 14, overflow: 'hidden', background: '#000' }}>
-            <video src={preview} controls style={{ width: '100%', maxHeight: 280, display: 'block' }} />
-            <button onClick={() => { setVideo(null); setPreview(null); }} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,.6)', color: 'white', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', fontSize: 13 }}>✕</button>
+            <video src={preview} controls style={{ width: '100%', maxHeight: 320, display: 'block', margin: '0 auto', aspectRatio: '9 / 16', objectFit: 'contain' }} />
+            <button onClick={() => { setVideo(null); setPreview(null); setDuration(null); }} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,.6)', color: 'white', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', fontSize: 13 }}>✕</button>
+            {duration != null && (
+              <div style={{ position: 'absolute', bottom: 8, left: 8, background: 'rgba(0,0,0,.6)', color: 'white', borderRadius: 10, padding: '3px 9px', fontSize: 11, fontWeight: 600 }}>⏱ {duration}s</div>
+            )}
           </div>
         ) : (
           <button onClick={() => fileRef.current.click()} style={{ width: '100%', padding: '30px 14px', background: '#EFF6FF', border: '1.5px dashed #BFDBFE', borderRadius: 14, color: G.blue, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
@@ -1571,8 +1601,16 @@ function CreateSheet({user,onClose,onPosted,showToast}){
   const[image,setImage]=useState(null);
   const[preview,setPreview]=useState(null);
   const[posting,setPosting]=useState(false);
+  const[aspect,setAspect]=useState('square'); // square 1:1 | portrait 4:5 | landscape 16:9
   const fileRef=useRef(null);
   const pickImg=e=>{const f=e.target.files[0];if(!f)return;setImage(f);setPreview(URL.createObjectURL(f));};
+
+  const ASPECT_OPTS=[
+    {id:'square',    label:'⬜ Square',    ratio:'1 / 1',   sub:'1080×1080'},
+    {id:'portrait',  label:'📱 Portrait',  ratio:'4 / 5',   sub:'1080×1350'},
+    {id:'landscape', label:'🖼️ Landscape', ratio:'16 / 9',  sub:'1080×608'},
+  ];
+
   const submit=async()=>{
     if(!text.trim()||posting)return; setPosting(true);
     let imageUrl='';
@@ -1583,18 +1621,40 @@ function CreateSheet({user,onClose,onPosted,showToast}){
       if(!upErr){const{data:{publicUrl}}=supabase.storage.from('posts').getPublicUrl(path);imageUrl=publicUrl;}
     }
     const{data,error}=await supabase.from('posts')
-      .insert({user_id:user.id,content:text.trim(),image_url:imageUrl,likes_count:0,comments_count:0})
+      .insert({user_id:user.id,content:text.trim(),image_url:imageUrl,aspect_ratio:image?aspect:null,likes_count:0,comments_count:0})
       .select('*,profiles(full_name,username,avatar_url)').single();
     if(!error&&data){onPosted(data);showToast('🚀 Post shared!');}
     setPosting(false);onClose();
   };
   return(
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:300,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-      <div style={{background:'white',borderRadius:'22px 22px 0 0',width:'100%',maxWidth:480,padding:18,animation:'slideup .28s ease'}}>
+      <div style={{background:'white',borderRadius:'22px 22px 0 0',width:'100%',maxWidth:480,padding:18,maxHeight:'88vh',overflowY:'auto',animation:'slideup .28s ease'}}>
         <div style={{width:38,height:4,background:'#e2e8f0',borderRadius:2,margin:'0 auto 14px'}}/>
         <div style={{fontSize:15,fontWeight:700,color:G.dark,marginBottom:14}}>✨ Create Post</div>
         <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="What's on your mind? 🌍" style={{width:'100%',minHeight:90,border:'1.5px solid #BFDBFE',borderRadius:14,padding:'10px 14px',fontSize:13,outline:'none',resize:'none',fontFamily:'inherit',color:G.dark}}/>
-        {preview&&<div style={{position:'relative',marginTop:10}}><img src={preview} alt="" style={{width:'100%',maxHeight:200,objectFit:'cover',borderRadius:12}}/><button onClick={()=>{setImage(null);setPreview(null);}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,.5)',color:'white',border:'none',borderRadius:'50%',width:24,height:24,cursor:'pointer',fontSize:12}}>✕</button></div>}
+
+        {preview&&(
+          <>
+            {/* Aspect ratio picker — Instagram-style */}
+            <div style={{display:'flex',gap:8,marginTop:12,marginBottom:8}}>
+              {ASPECT_OPTS.map(opt=>(
+                <button key={opt.id} onClick={()=>setAspect(opt.id)} style={{
+                  flex:1,padding:'8px 4px',borderRadius:12,fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit',
+                  border:aspect===opt.id?`2px solid ${G.blue}`:'1.5px solid #e2e8f0',
+                  background:aspect===opt.id?G.lb:'white',color:aspect===opt.id?G.blue:G.gray
+                }}>
+                  <div>{opt.label}</div>
+                  <div style={{fontSize:9,opacity:.75,marginTop:1}}>{opt.sub}</div>
+                </button>
+              ))}
+            </div>
+            <div style={{position:'relative',width:'100%',maxWidth:260,margin:'0 auto',aspectRatio:ASPECT_OPTS.find(o=>o.id===aspect).ratio,borderRadius:12,overflow:'hidden',background:'#000'}}>
+              <img src={preview} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+              <button onClick={()=>{setImage(null);setPreview(null);}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,.5)',color:'white',border:'none',borderRadius:'50%',width:24,height:24,cursor:'pointer',fontSize:12}}>✕</button>
+            </div>
+          </>
+        )}
+
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginTop:14}}>
           {[['📸','Photo',()=>fileRef.current.click()],['🎵','Music',()=>showToast('🎵 Soon')],
             ['🤖','AI Art',()=>showToast('🤖 Soon')],['📰','News',()=>showToast('📰 Soon')]].map(([ic,lb,fn])=>(
@@ -1642,7 +1702,7 @@ function PostCard({post,currentUserId,isLiked,commentCount,onLike,onComment,onDe
         {post.content.split(/(#\w+)/g).map((p,i)=>p.startsWith('#')?<span key={i} style={{color:G.blue,fontWeight:600}}>{p}</span>:p)}
       </div>}
       {/* Image */}
-      {post.image_url&&<div style={{width:'100%',maxHeight:300,overflow:'hidden'}}><img src={post.image_url} alt="" style={{width:'100%',objectFit:'cover'}}/></div>}
+      {post.image_url&&<div style={{width:'100%',aspectRatio:post.aspect_ratio==='portrait'?'4 / 5':post.aspect_ratio==='landscape'?'16 / 9':'1 / 1',overflow:'hidden',background:'#000'}}><img src={post.image_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/></div>}
       {/* Footer actions */}
       <div style={{padding:'9px 13px 11px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <div style={{display:'flex',alignItems:'center',gap:16}}>
