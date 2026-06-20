@@ -353,10 +353,29 @@ export default function Profile() {
   const handleAvatarUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !user) return;
-    if (file.size > 3 * 1024 * 1024) { alert('Photo must be less than 3MB!'); return; }
+    if (file.size > 6 * 1024 * 1024) { alert('Photo must be less than 6MB!'); return; }
     setUploadingAvatar(true);
-    const fileName = `avatar-${user.id}-${Date.now()}.${file.name.split('.').pop()}`;
-    const { error: upErr } = await supabase.storage.from('posts').upload(fileName, file, { upsert: true });
+
+    // Crop to a true 1080×1080 square (center crop) so the profile circle never looks stretched
+    const squareBlob = await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const size = 1080;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const minSide = Math.min(img.width, img.height);
+        const sx = (img.width - minSide) / 2;
+        const sy = (img.height - minSide) / 2;
+        ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.92);
+      };
+      img.onerror = () => resolve(file); // fallback to original if crop fails
+      img.src = URL.createObjectURL(file);
+    });
+
+    const fileName = `avatar-${user.id}-${Date.now()}.jpg`;
+    const { error: upErr } = await supabase.storage.from('posts').upload(fileName, squareBlob, { upsert: true, contentType: 'image/jpeg' });
     if (!upErr) {
       const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName);
       await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
