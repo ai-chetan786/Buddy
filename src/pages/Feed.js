@@ -447,15 +447,24 @@ function FriendsPanel({onClose,currentUser,allUsers,following,onFollow,showToast
         )}
         {messages.map((m,i)=>{
           const mine=m.sender_id===currentUser.id;
+          const isPhoto=m.content&&m.content.startsWith('[photo]');
+          const photoUrl=isPhoto?m.content.replace('[photo]',''):null;
           return(
             <div key={m.id||i} style={{display:'flex',alignItems:'flex-end',gap:7,flexDirection:mine?'row-reverse':'row'}}>
               {!mine&&<Av p={chatUser} size={28} idx={1}/>}
-              <div style={{maxWidth:'72%',padding:'9px 13px',borderRadius:18,fontSize:12.5,lineHeight:1.5,wordBreak:'break-word',
-                ...(mine?{background:'linear-gradient(135deg,#3B82F6,#2563EB)',color:'white',borderBottomRightRadius:4,boxShadow:'0 2px 10px rgba(37,99,235,.3)'}
-                        :{background:'white',color:G.dark,borderBottomLeftRadius:4,boxShadow:'0 1px 6px rgba(37,99,235,.08)'})}}>
-                {m.content}
-                {mine&&<span style={{fontSize:10,opacity:.75,float:'right',marginLeft:6,marginTop:3}}>✓✓</span>}
-              </div>
+              {isPhoto?(
+                <div style={{maxWidth:'62%',borderRadius:16,overflow:'hidden',boxShadow:'0 2px 10px rgba(37,99,235,.15)'}}>
+                  <img src={photoUrl} alt="Shared" style={{width:'100%',display:'block'}}/>
+                  <div style={{padding:'4px 8px',fontSize:9,color:G.gray,background:'white'}}>📸 Buddy Camera photo</div>
+                </div>
+              ):(
+                <div style={{maxWidth:'72%',padding:'9px 13px',borderRadius:18,fontSize:12.5,lineHeight:1.5,wordBreak:'break-word',
+                  ...(mine?{background:'linear-gradient(135deg,#3B82F6,#2563EB)',color:'white',borderBottomRightRadius:4,boxShadow:'0 2px 10px rgba(37,99,235,.3)'}
+                          :{background:'white',color:G.dark,borderBottomLeftRadius:4,boxShadow:'0 1px 6px rgba(37,99,235,.08)'})}}>
+                  {m.content}
+                  {mine&&<span style={{fontSize:10,opacity:.75,float:'right',marginLeft:6,marginTop:3}}>✓✓</span>}
+                </div>
+              )}
             </div>
           );
         })}
@@ -1167,6 +1176,9 @@ function BuddyCamera({ user, onClose, showToast, onPosted, onStoryAdded, onOpenR
   const [saving, setSaving] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
   const [enhancedImage, setEnhancedImage] = useState(null);
+  const [showShareToFriends, setShowShareToFriends] = useState(false);
+  const [shareFriendsList, setShareFriendsList] = useState([]);
+  const [sharingToIds, setSharingToIds] = useState({});
 
   const activeFilter = (CAM_FILTERS[activeCat] || [])[activeFilterIdx] || CAM_FILTERS.beauty[0];
 
@@ -1272,13 +1284,18 @@ function BuddyCamera({ user, onClose, showToast, onPosted, onStoryAdded, onOpenR
     if (upErr) { showToast('❌ Upload failed: ' + upErr.message); return null; }
     const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(path);
 
-    await supabase.from('camera_photos').insert({
+    const { error: insertErr } = await supabase.from('camera_photos').insert({
       user_id: user.id,
       image_url: publicUrl,
       filter_cat: activeCat,
       filter_name: activeFilter.name,
       is_ai_enhanced: !!enhancedImage
     });
+    if (insertErr) {
+      // Photo file did upload, but it won't show in "My Saved Photos" — tell the user honestly
+      console.error('camera_photos insert failed:', insertErr.message);
+      showToast('⚠️ Photo uploaded but not tracked: ' + insertErr.message);
+    }
 
     return publicUrl;
   };
@@ -1289,19 +1306,33 @@ function BuddyCamera({ user, onClose, showToast, onPosted, onStoryAdded, onOpenR
     setSaving(true);
     const url = await uploadCapturedPhoto();
     setSaving(false);
-    if (url) { showToast('💾 Saved to your Buddy Storage!'); resetCapture(); onClose(); }
+    if (url) { showToast('💾 Saved! View it in Profile → Saved Photos'); resetCapture(); onClose(); }
   };
 
   const handleShare = async () => {
-    const photoToUpload = enhancedImage || capturedImage;
-    if (navigator.share) {
-      try {
-        const file = dataUrlToFile(photoToUpload, 'buddy-photo.jpg');
-        await navigator.share({ files: [file], title: 'Buddy AI Camera' });
-      } catch (e) { if (e.name !== 'AbortError') showToast('📤 Shared!'); }
-    } else {
-      showToast('📤 Sharing not supported on this browser');
+    // Share to Buddy friends (direct message), not an external link
+    const { data } = await supabase
+      .from('profiles')
+      .select('id,full_name,username,avatar_url')
+      .neq('id', user.id)
+      .limit(30);
+    setShareFriendsList(data || []);
+    setShowShareToFriends(true);
+  };
+
+  const sendPhotoToFriend = async (friendId) => {
+    setSharingToIds(s => ({ ...s, [friendId]: true }));
+    const url = await uploadCapturedPhoto();
+    if (url) {
+      const { error } = await supabase.from('direct_messages').insert({
+        sender_id: user.id,
+        receiver_id: friendId,
+        content: '[photo]' + url   // FriendsPanel chat detects this prefix and renders an image bubble
+      });
+      if (!error) showToast('📤 Sent!');
+      else showToast('❌ Could not send: ' + error.message);
     }
+    setSharingToIds(s => ({ ...s, [friendId]: false }));
   };
 
   const handlePost = async () => {
@@ -1497,6 +1528,37 @@ function BuddyCamera({ user, onClose, showToast, onPosted, onStoryAdded, onOpenR
         {capturedImage && (
           <div onClick={capturePhoto} style={{ position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 10, background: 'rgba(255,255,255,.2)', backdropFilter: 'blur(6px)', color: 'white', borderRadius: 20, padding: '10px 22px', fontSize: 13, fontWeight: 700, cursor: 'pointer', border: '1.5px solid rgba(255,255,255,.3)' }}>
             🔄 Retake
+          </div>
+        )}
+
+        {/* Share to Buddy Friends — sends as a real direct message, not an external link */}
+        {showShareToFriends && (
+          <div onClick={e=>e.target===e.currentTarget&&setShowShareToFriends(false)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:400, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+            <div style={{ background:'white', borderRadius:'22px 22px 0 0', width:'100%', maxWidth:480, padding:18, maxHeight:'65vh', overflowY:'auto' }}>
+              <div style={{ width:38, height:4, background:'#e2e8f0', borderRadius:2, margin:'0 auto 14px' }}/>
+              <div style={{ fontSize:15, fontWeight:700, color:G.dark, marginBottom:4 }}>📤 Share to Friends</div>
+              <div style={{ fontSize:12, color:G.gray, marginBottom:14 }}>Sends this photo directly as a message — only to people you choose</div>
+              {shareFriendsList.length===0 && (
+                <div style={{ textAlign:'center', color:G.gray, padding:'20px 0', fontSize:13 }}>No friends yet. Invite people to join Buddy! 👋</div>
+              )}
+              {shareFriendsList.map((f,i)=>(
+                <div key={f.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'9px 0', borderBottom:'1px solid #f1f5f9' }}>
+                  <div style={{width:42,height:42,borderRadius:'50%',background:GRAD[i%GRAD.length],display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:700,color:'white',overflow:'hidden',flexShrink:0}}>
+                    {f.avatar_url?<img src={f.avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:(f.full_name||f.username||'?').charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13.5, fontWeight:600, color:G.dark }}>{f.full_name||f.username||'User'}</div>
+                    <div style={{ fontSize:11, color:G.gray }}>{f.username?'@'+f.username:''}</div>
+                  </div>
+                  <button onClick={()=>sendPhotoToFriend(f.id)} disabled={sharingToIds[f.id]} style={{
+                    background: sharingToIds[f.id]?'#e2e8f0':G.blue, color:'white', border:'none',
+                    borderRadius:18, padding:'6px 16px', fontSize:12, fontWeight:700,
+                    cursor: sharingToIds[f.id]?'default':'pointer', fontFamily:'inherit'
+                  }}>{sharingToIds[f.id]?'Sending...':'Send'}</button>
+                </div>
+              ))}
+              <button onClick={()=>setShowShareToFriends(false)} style={{ width:'100%', marginTop:14, padding:'12px', background:'#F1F5FF', border:'none', borderRadius:14, fontSize:14, fontWeight:600, color:G.blue, cursor:'pointer', fontFamily:'inherit' }}>Done</button>
+            </div>
           </div>
         )}
       </div>
