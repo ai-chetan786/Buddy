@@ -975,25 +975,50 @@ function ReelsPanel({onClose, currentUser, showToast}) {
         </div>
       )}
 
-      {/* Vertical swipe feed — constrained to a real 9:16 box like Instagram/TikTok mobile,
-          never stretched full-bleed on wide screens (laptop/tablet) */}
+      {/* Vertical swipe feed — TikTok/Instagram style, ONE full-screen reel at a time.
+          Uses a plain block scroll container (NOT flexbox) so each reel item gets
+          a guaranteed full 100dvh height with no shrinking/peeking from siblings. */}
       {!loading && reels.length > 0 && (
-        <div ref={containerRef} onScroll={handleScroll} style={{ height: '100%', overflowY: 'scroll', scrollSnapType: 'y mandatory', scrollbarWidth: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center' }} className="ns">
+        <div
+          ref={containerRef}
+          onScroll={handleScroll}
+          className="ns"
+          style={{
+            height: '100%',
+            width: '100%',
+            overflowY: 'scroll',
+            scrollSnapType: 'y mandatory',
+            scrollbarWidth: 'none',
+          }}
+        >
           {reels.map((reel, i) => (
-            <div key={reel.id} style={{ height: '100%', width: '100%', maxWidth: 480, scrollSnapAlign: 'start', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', overflow: 'hidden' }}>
-              {/* Blurred backdrop fills any empty space instead of stretching the real video */}
-              <video src={reel.video_url} muted loop playsInline aria-hidden="true"
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(40px) brightness(.45)', transform: 'scale(1.2)', zIndex: 0 }} />
-              {/* Real video — kept at its true 9:16 shape, never cropped or stretched */}
-              <video
-                ref={el => videoRefs.current[i] = el}
-                src={reel.video_url}
-                loop
-                muted={false}
-                playsInline
-                onClick={e => { e.target.paused ? e.target.play() : e.target.pause(); }}
-                style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', maxWidth: 480, aspectRatio: '9 / 16', objectFit: 'contain', margin: '0 auto' }}
-              />
+            <div
+              key={reel.id}
+              style={{
+                height: '100dvh',
+                width: '100%',
+                scrollSnapAlign: 'start',
+                scrollSnapStop: 'always',
+                position: 'relative',
+                background: '#000',
+                overflow: 'hidden',
+              }}
+            >
+              <div style={{ position:'absolute', inset:0, maxWidth:480, margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
+                {/* Blurred backdrop fills any empty space instead of stretching the real video */}
+                <video src={reel.video_url} muted loop playsInline aria-hidden="true"
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(40px) brightness(.45)', transform: 'scale(1.2)', zIndex: 0 }} />
+                {/* Real video — kept at its true 9:16 shape, never cropped or stretched */}
+                <video
+                  ref={el => videoRefs.current[i] = el}
+                  src={reel.video_url}
+                  loop
+                  muted={false}
+                  playsInline
+                  onClick={e => { e.target.paused ? e.target.play() : e.target.pause(); }}
+                  style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              </div>
 
               {/* Bottom info */}
               <div style={{ position: 'absolute', bottom: 24, left: 14, right: 70, color: 'white', zIndex: 5 }}>
