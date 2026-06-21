@@ -203,74 +203,6 @@ function FollowersModal({ userId, onClose }) {
 }
 
 // ── Story Views Modal ─────────────────────────
-function StoryViewsModal({ storyId, onClose }) {
-  const [views, setViews]     = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from('story_views')
-        .select('*, profiles(full_name, username, avatar_url)')
-        .eq('story_id', storyId)
-        .order('viewed_at', { ascending: false });
-      setViews(data || []);
-      setLoading(false);
-    };
-    load();
-  }, [storyId]);
-
-  return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)',
-      zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center'
-    }}>
-      <div style={{
-        background: 'white', borderRadius: '22px 22px 0 0',
-        width: '100%', maxWidth: 480, padding: 20,
-        maxHeight: '60vh', overflowY: 'auto',
-        animation: 'slideup .28s ease'
-      }}>
-        <div style={{ width: 38, height: 4, background: '#e2e8f0', borderRadius: 2, margin: '0 auto 14px' }} />
-        <div style={{ fontSize: 16, fontWeight: 600, color: '#1E293B', marginBottom: 4 }}>
-          👁️ Story Views
-        </div>
-        <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 16 }}>
-          {views.length} {views.length === 1 ? 'person' : 'people'} viewed your story
-        </div>
-        {loading && <div style={{ textAlign: 'center', color: '#9CA3AF', padding: 20 }}>Loading...</div>}
-        {!loading && views.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#9CA3AF', padding: 20 }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>👁️</div>
-            No views yet. Share your profile link!
-          </div>
-        )}
-        {views.map((v, i) => (
-          <div key={v.id} style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '8px 0', borderBottom: '1px solid #f1f5f9'
-          }}>
-            <Avatar profile={v.profiles} size={38} idx={i} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1E293B' }}>
-                {v.profiles?.full_name || 'User'}
-              </div>
-              <div style={{ fontSize: 11, color: '#9CA3AF' }}>
-                {new Date(v.viewed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </div>
-            </div>
-          </div>
-        ))}
-        <button onClick={onClose} style={{
-          width: '100%', marginTop: 16, padding: '12px',
-          background: '#F1F5FF', border: 'none', borderRadius: 14,
-          fontSize: 14, fontWeight: 600, color: '#2563EB',
-          cursor: 'pointer', fontFamily: 'inherit'
-        }}>Close</button>
-      </div>
-    </div>
-  );
-}
 
 // ── MAIN PROFILE ──────────────────────────────
 export default function Profile() {
@@ -290,7 +222,6 @@ export default function Profile() {
   // Modal states
   const [showFollowing,  setShowFollowing]  = useState(false);
   const [showFollowers,  setShowFollowers]  = useState(false);
-  const [showStoryViews, setShowStoryViews] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -433,9 +364,6 @@ export default function Profile() {
       {showFollowers && user && (
         <FollowersModal userId={user.id} onClose={() => setShowFollowers(false)} />
       )}
-      {showStoryViews && myStory && (
-        <StoryViewsModal storyId={myStory.id} onClose={() => setShowStoryViews(false)} />
-      )}
 
       <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100dvh', background: '#F0F4FF', fontFamily: 'Segoe UI, -apple-system, sans-serif', paddingBottom: 80 }}>
 
@@ -532,12 +460,11 @@ export default function Profile() {
                 <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
                   Expires: {new Date(myStory.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
+                <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>
+                  💡 Tap your story in Feed, then swipe up to see who viewed it
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {/* View count button */}
-                <button onClick={() => setShowStoryViews(true)} style={{ background: '#EFF6FF', border: '1.5px solid #BFDBFE', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 600, color: '#2563EB', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-                  👁️ Views
-                </button>
                 {/* Delete story */}
                 <button onClick={handleDeleteStory} style={{ background: '#FEE2E2', border: '1.5px solid #FECACA', borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 600, color: '#EF4444', cursor: 'pointer', fontFamily: 'inherit' }}>
                   🗑️ Delete
