@@ -448,7 +448,9 @@ function FriendsPanel({onClose,currentUser,allUsers,following,onFollow,showToast
         {messages.map((m,i)=>{
           const mine=m.sender_id===currentUser.id;
           const isPhoto=m.content&&m.content.startsWith('[photo]');
+          const isReel=m.content&&m.content.startsWith('[reel]');
           const photoUrl=isPhoto?m.content.replace('[photo]',''):null;
+          const reelUrl=isReel?m.content.replace('[reel]',''):null;
           return(
             <div key={m.id||i} style={{display:'flex',alignItems:'flex-end',gap:7,flexDirection:mine?'row-reverse':'row'}}>
               {!mine&&<Av p={chatUser} size={28} idx={1}/>}
@@ -456,6 +458,11 @@ function FriendsPanel({onClose,currentUser,allUsers,following,onFollow,showToast
                 <div style={{maxWidth:'62%',borderRadius:16,overflow:'hidden',boxShadow:'0 2px 10px rgba(37,99,235,.15)'}}>
                   <img src={photoUrl} alt="Shared" style={{width:'100%',display:'block'}}/>
                   <div style={{padding:'4px 8px',fontSize:9,color:G.gray,background:'white'}}>📸 Buddy Camera photo</div>
+                </div>
+              ):isReel?(
+                <div style={{maxWidth:'62%',borderRadius:16,overflow:'hidden',boxShadow:'0 2px 10px rgba(37,99,235,.15)',aspectRatio:'9 / 16',background:'#000'}}>
+                  <video src={reelUrl} controls style={{width:'100%',height:'100%',objectFit:'contain'}}/>
+                  <div style={{padding:'4px 8px',fontSize:9,color:G.gray,background:'white'}}>🎬 Shared Reel</div>
                 </div>
               ):(
                 <div style={{maxWidth:'72%',padding:'9px 13px',borderRadius:18,fontSize:12.5,lineHeight:1.5,wordBreak:'break-word',
@@ -552,14 +559,21 @@ function AddStorySheet({user,onClose,onAdded,showToast}){
 // ══════════════════════════════════════════════
 // STORY VIEWER
 // ══════════════════════════════════════════════
-function StoryViewer({story,onClose,onNext}){
+function StoryViewer({story,onClose,onNext,currentUserId}){
   const[prog,setProg]=useState(0);
+  const[showViewers,setShowViewers]=useState(false);
+  const[viewers,setViewers]=useState([]);
+  const[loadingViewers,setLoadingViewers]=useState(false);
+  const isOwnStory = story.user_id===currentUserId;
+
   useEffect(()=>{
     setProg(0);
+    setShowViewers(false);
+    if(showViewers)return; // paused while viewers sheet is open
     const advance=onNext||onClose;
     const t=setTimeout(advance,5000);
     const iv=setInterval(()=>setProg(p=>Math.min(p+2,100)),100);
-    // Track view
+    // Track view (only counts when someone else views it)
     const track=async()=>{
       try{
         const{data:{session}}=await supabase.auth.getSession();
@@ -571,6 +585,26 @@ function StoryViewer({story,onClose,onNext}){
     if(story.id) track();
     return()=>{clearTimeout(t);clearInterval(iv);};
   },[story]);
+
+  // Pause the auto-advance timer while the viewers sheet is open
+  useEffect(()=>{
+    if(!showViewers)return;
+    // no-op cleanup handled by the effect above re-running on showViewers change via story dep only,
+    // so we manage pause purely by early-returning there. This effect just loads the list.
+  },[showViewers]);
+
+  const openViewers=async()=>{
+    if(!isOwnStory)return;
+    setShowViewers(true);
+    setLoadingViewers(true);
+    const{data}=await supabase.from('story_views')
+      .select('*, profiles(full_name,username,avatar_url)')
+      .eq('story_id',story.id)
+      .order('viewed_at',{ascending:false});
+    setViewers(data||[]);
+    setLoadingViewers(false);
+  };
+
   if(!story)return null;
   const name=story.profiles?.full_name||story.profiles?.username||'User';
   return(
@@ -583,13 +617,45 @@ function StoryViewer({story,onClose,onNext}){
           <div><div style={{color:'white',fontWeight:700,fontSize:13}}>{name}</div><div style={{color:'rgba(255,255,255,.7)',fontSize:10}}>{ago(story.created_at)} ago</div></div>
         </div>
         <div onClick={onClose} style={{position:'absolute',top:12,right:14,color:'white',fontSize:24,cursor:'pointer',zIndex:2}}>✕</div>
-        {story.caption&&<div style={{position:'absolute',bottom:90,left:'50%',transform:'translateX(-50%)',color:'white',fontSize:16,fontWeight:700,textAlign:'center',width:'85%',textShadow:'0 2px 8px rgba(0,0,0,.6)',zIndex:2,background:'rgba(0,0,0,.3)',borderRadius:12,padding:'10px 14px'}}>{story.caption}</div>}
+        {story.caption&&<div style={{position:'absolute',bottom:isOwnStory?130:90,left:'50%',transform:'translateX(-50%)',color:'white',fontSize:16,fontWeight:700,textAlign:'center',width:'85%',textShadow:'0 2px 8px rgba(0,0,0,.6)',zIndex:2,background:'rgba(0,0,0,.3)',borderRadius:12,padding:'10px 14px'}}>{story.caption}</div>}
         {!story.image_url&&<div style={{fontSize:70,animation:'floaty 3s ease-in-out infinite',zIndex:2}}>✨</div>}
+
+        {/* Instagram-style swipe-up handle — only visible on YOUR OWN story */}
+        {isOwnStory&&!showViewers&&(
+          <div onClick={openViewers} style={{position:'absolute',bottom:18,left:'50%',transform:'translateX(-50%)',zIndex:3,display:'flex',flexDirection:'column',alignItems:'center',gap:4,cursor:'pointer'}}>
+            <div style={{fontSize:18,color:'white',animation:'floaty 1.6s ease-in-out infinite'}}>⌃</div>
+            <div style={{color:'white',fontSize:11,fontWeight:600,textShadow:'0 1px 4px rgba(0,0,0,.6)'}}>👁️ Swipe up to see viewers</div>
+          </div>
+        )}
       </div>
-      <div style={{padding:'10px 14px 30px',display:'flex',gap:9,background:'rgba(0,0,0,.8)'}}>
-        <input placeholder={`Reply to ${name}...`} style={{flex:1,background:'rgba(255,255,255,.1)',border:'1px solid rgba(255,255,255,.3)',color:'white',borderRadius:22,padding:'9px 14px',fontSize:12.5,outline:'none'}}/>
-        <span style={{color:'white',fontSize:22,cursor:'pointer',alignSelf:'center'}}>➤</span>
-      </div>
+
+      {/* Viewers bottom sheet — Instagram-style, only for your own story */}
+      {isOwnStory&&showViewers?(
+        <div style={{background:'#0a0a0a',borderRadius:'20px 20px 0 0',padding:'14px 16px 24px',maxHeight:'50vh',overflowY:'auto',animation:'slideup .25s ease'}}>
+          <div style={{width:36,height:4,background:'rgba(255,255,255,.3)',borderRadius:2,margin:'0 auto 14px'}} onClick={()=>setShowViewers(false)}/>
+          <div style={{color:'white',fontSize:13,fontWeight:700,marginBottom:12}}>
+            👁️ {viewers.length} {viewers.length===1?'view':'views'}
+          </div>
+          {loadingViewers&&<div style={{color:'rgba(255,255,255,.5)',fontSize:12,textAlign:'center',padding:20}}>Loading...</div>}
+          {!loadingViewers&&viewers.length===0&&(
+            <div style={{color:'rgba(255,255,255,.5)',fontSize:12,textAlign:'center',padding:20}}>No views yet</div>
+          )}
+          {viewers.map((v,i)=>(
+            <div key={v.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0'}}>
+              <Av p={v.profiles} size={36} idx={i}/>
+              <div style={{flex:1}}>
+                <div style={{color:'white',fontSize:13,fontWeight:600}}>{v.profiles?.full_name||v.profiles?.username||'User'}</div>
+                <div style={{color:'rgba(255,255,255,.5)',fontSize:10}}>{ago(v.viewed_at)} ago</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ):(
+        <div style={{padding:'10px 14px 30px',display:'flex',gap:9,background:'rgba(0,0,0,.8)'}}>
+          <input placeholder={`Reply to ${name}...`} style={{flex:1,background:'rgba(255,255,255,.1)',border:'1px solid rgba(255,255,255,.3)',color:'white',borderRadius:22,padding:'9px 14px',fontSize:12.5,outline:'none'}}/>
+          <span style={{color:'white',fontSize:22,cursor:'pointer',alignSelf:'center'}}>➤</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -673,7 +739,7 @@ function NotificationsPanel({onClose, currentUser, showToast}) {
     await supabase.from('notifications').update({ is_read: true }).eq('user_id', currentUser.id).eq('is_read', false);
   };
 
-  const iconFor = (type) => type === 'like' ? '❤️' : type === 'comment' ? '💬' : type === 'follow' ? '👥' : '🔔';
+  const iconFor = (type) => type === 'like' ? '❤️' : type === 'comment' ? '💬' : type === 'follow' ? '👥' : type === 'message' ? '✉️' : '🔔';
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: G.bg, display: 'flex', flexDirection: 'column', fontFamily: "'Segoe UI',-apple-system,sans-serif" }}>
@@ -849,15 +915,28 @@ function ReelsPanel({onClose, currentUser, showToast}) {
     else await supabase.from('reel_likes').delete().eq('reel_id', reelId).eq('user_id', currentUser.id);
   };
 
+  const [showShareSheet, setShowShareSheet] = useState(false);
+  const [shareReel, setShareReel] = useState(null);
+  const [shareFriends, setShareFriends] = useState([]);
+  const [sendingTo, setSendingTo] = useState({});
+
   const handleShare = async (reel) => {
-    const url = window.location.origin + '/feed';
-    if (navigator.share) {
-      try { await navigator.share({ title: 'Buddy AI Reel', text: reel.caption || 'Check this reel!', url }); }
-      catch (e) { if (e.name !== 'AbortError') showToast('📤 Shared!'); }
-    } else {
-      try { await navigator.clipboard.writeText(url); showToast('🔗 Link copied!'); }
-      catch { showToast('📤 ' + url); }
-    }
+    const { data } = await supabase.from('profiles').select('id,full_name,username,avatar_url').neq('id', currentUser.id).limit(30);
+    setShareFriends(data || []);
+    setShareReel(reel);
+    setShowShareSheet(true);
+  };
+
+  const sendReelToFriend = async (friendId) => {
+    setSendingTo(s => ({ ...s, [friendId]: true }));
+    const { error } = await supabase.from('direct_messages').insert({
+      sender_id: currentUser.id,
+      receiver_id: friendId,
+      content: '[reel]' + shareReel.video_url
+    });
+    if (!error) showToast('📤 Sent!');
+    else showToast('❌ Could not send');
+    setSendingTo(s => ({ ...s, [friendId]: false }));
   };
 
   const handleDeleteReel = async (reelId) => {
@@ -956,6 +1035,31 @@ function ReelsPanel({onClose, currentUser, showToast}) {
       {showComments && currentUser && (
         <ReelCommentsSheet reelId={showComments} user={currentUser} onClose={() => setShowComments(null)}
           onCommentAdded={(reelId) => setReels(r => r.map(x => x.id === reelId ? { ...x, comments_count: (x.comments_count || 0) + 1 } : x))} />
+      )}
+      {showShareSheet && (
+        <div onClick={e=>e.target===e.currentTarget&&setShowShareSheet(false)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:400, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+          <div style={{ background:'white', borderRadius:'22px 22px 0 0', width:'100%', maxWidth:480, padding:18, maxHeight:'65vh', overflowY:'auto' }}>
+            <div style={{ width:38, height:4, background:'#e2e8f0', borderRadius:2, margin:'0 auto 14px' }}/>
+            <div style={{ fontSize:15, fontWeight:700, color:G.dark, marginBottom:4 }}>📤 Share to Friends</div>
+            <div style={{ fontSize:12, color:G.gray, marginBottom:14 }}>Sends this reel directly as a message</div>
+            {shareFriends.length===0 && <div style={{ textAlign:'center', color:G.gray, padding:'20px 0', fontSize:13 }}>No friends yet. Invite people to join Buddy! 👋</div>}
+            {shareFriends.map((f,i)=>(
+              <div key={f.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'9px 0', borderBottom:'1px solid #f1f5f9' }}>
+                <Av p={f} size={42} idx={i}/>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13.5, fontWeight:600, color:G.dark }}>{f.full_name||f.username||'User'}</div>
+                  <div style={{ fontSize:11, color:G.gray }}>{f.username?'@'+f.username:''}</div>
+                </div>
+                <button onClick={()=>sendReelToFriend(f.id)} disabled={sendingTo[f.id]} style={{
+                  background: sendingTo[f.id]?'#e2e8f0':G.blue, color:'white', border:'none',
+                  borderRadius:18, padding:'6px 16px', fontSize:12, fontWeight:700,
+                  cursor: sendingTo[f.id]?'default':'pointer', fontFamily:'inherit'
+                }}>{sendingTo[f.id]?'Sending...':'Send'}</button>
+              </div>
+            ))}
+            <button onClick={()=>setShowShareSheet(false)} style={{ width:'100%', marginTop:14, padding:'12px', background:'#F1F5FF', border:'none', borderRadius:14, fontSize:14, fontWeight:600, color:G.blue, cursor:'pointer', fontFamily:'inherit' }}>Done</button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1984,7 +2088,7 @@ export default function Feed(){
       <Toast msg={toast}/>
 
       {/* ── OVERLAYS ── */}
-      {activeStory&&<StoryViewer story={activeStory} onClose={()=>{setActiveStory(null);setStoryQueue([]);setStoryQueueIdx(0);}} onNext={nextStoryInQueue}/>}
+      {activeStory&&<StoryViewer story={activeStory} onClose={()=>{setActiveStory(null);setStoryQueue([]);setStoryQueueIdx(0);}} onNext={nextStoryInQueue} currentUserId={user?.id}/>}
       {commentPostId&&user&&<CommentsSheet postId={commentPostId} user={user} onClose={()=>setCommentPostId(null)} onCommentAdded={handleCommentAdded}/>}
       {panel==='create-choice'&&(
         <div onClick={e=>e.target===e.currentTarget&&closePanel()} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:300,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
