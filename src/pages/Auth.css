@@ -67,6 +67,20 @@
   50% { transform: translateY(-4px); }
 }
 
+/* Real Buddy logo image — replaces the old CSS-drawn robot mascot */
+.buddy-logo-img {
+  width: 120px;
+  height: auto;
+  object-fit: contain;
+  animation: float 4s ease-in-out infinite;
+  filter: drop-shadow(0 10px 24px rgba(37,99,235,0.35));
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
 /* Robot CSS Art */
 .robot-container {
   display: flex;
@@ -288,6 +302,18 @@
   font-size: 13px;
   margin-bottom: 14px;
   text-align: center;
+}
+
+.auth-success-new {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #16a34a;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  margin-bottom: 14px;
+  text-align: center;
+  line-height: 1.5;
 }
 
 /* ===== FORM ===== */
