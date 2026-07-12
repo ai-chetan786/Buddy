@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
+import InstallPrompt from '../components/InstallPrompt';
 
 /* ============================================================
    BUDDY AI — Feed.js  (Feed IS the home)
@@ -31,6 +32,7 @@ function Av({p,size=40,idx=0}){
 // ══════════════════════════════════════════════
 // AI CHAT PANEL — ChatGPT style with session storage
 // Sessions saved to Supabase, persist after refresh
+// Phase 2: Extended with Buddy Marketplace AI ordering
 // ══════════════════════════════════════════════
 function AIChatPanel({onClose, currentUser, showToast}) {
   const [sessions, setSessions] = useState([]);
@@ -40,13 +42,20 @@ function AIChatPanel({onClose, currentUser, showToast}) {
   const [loading, setLoading] = useState(false);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [pendingOrder, setPendingOrder] = useState(null);
+  const [orderQty, setOrderQty] = useState(1);
+  const [orderAddress, setOrderAddress] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cod'); // 'cod' | 'upi'
+  const [placingOrder, setPlacingOrder] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
   const msgsRef = useRef(null);
 
   useEffect(() => {
-    setTimeout(() => {
-      if (msgsRef.current) msgsRef.current.scrollTop = msgsRef.current.scrollHeight;
-    }, 60);
-  }, [msgs]);
+    if (currentUser) {
+      supabase.from('profiles').select('address,phone').eq('id',currentUser.id).single()
+        .then(({data}) => { if(data) setUserProfile(data); setOrderAddress(data?.address||''); });
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     if (currentUser) loadSessions();
@@ -174,13 +183,21 @@ function AIChatPanel({onClose, currentUser, showToast}) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: newMsgs.map(m => ({ role: m.role, content: m.content }))
+          messages: newMsgs.map(m => ({ role: m.role, content: m.content })),
+          userId: currentUser.id,
+          userAddress: userProfile?.address || ''
         })
       });
       const d = await res.json();
       const reply = d.reply || d.content || d.message || "I'm having trouble right now. Try again! 🤖";
       setMsgs(m => [...m, { role: 'assistant', content: reply }]);
       await saveMsg(sessionId, 'assistant', reply);
+
+      // Phase 2: If AI detected ordering intent, show the order confirmation card
+      if (d.orderIntent) {
+        setPendingOrder(d.orderIntent);
+        setOrderQty(d.orderIntent.quantity || 1);
+      }
     } catch (e) {
       const err = "Sorry, couldn't connect. Please try again! 🤖";
       setMsgs(m => [...m, { role: 'assistant', content: err }]);
@@ -189,7 +206,7 @@ function AIChatPanel({onClose, currentUser, showToast}) {
     setLoading(false);
   };
 
-  const quickPrompts = ["Tell me a joke 😄", "Give me motivation 💪", "Help me write a post", "Explain AI simply 🤖"];
+  const quickPrompts = ["🍛 Order biryani", "🛒 I need groceries", "Tell me a joke 😄", "Give me motivation 💪"];
 
   if (loadingSessions) {
     return (
@@ -293,6 +310,116 @@ function AIChatPanel({onClose, currentUser, showToast}) {
           </div>
         )}
       </div>
+
+      {/* ── ORDER CONFIRMATION CARD ── */}
+      {pendingOrder && (
+        <div style={{ flexShrink:0, background:'white', borderTop:'2px solid #BFDBFE', padding:'14px 14px 8px' }}>
+          <div style={{ background:'#EFF6FF', borderRadius:16, padding:14 }}>
+            <div style={{ fontSize:13, fontWeight:800, color:G.dark, marginBottom:8 }}>🛒 Confirm Your Order</div>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+              <div>
+                <div style={{ fontSize:13, fontWeight:700, color:G.dark }}>{pendingOrder.product_name}</div>
+                <div style={{ fontSize:11, color:G.gray }}>🏪 {pendingOrder.shop_name}</div>
+              </div>
+              <div style={{ fontSize:16, fontWeight:800, color:G.blue }}>₹{(pendingOrder.price * orderQty).toFixed(0)}</div>
+            </div>
+            {/* Quantity */}
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+              <span style={{ fontSize:12, color:G.gray }}>Qty:</span>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <button onClick={() => setOrderQty(q => Math.max(1,q-1))} style={{ width:26, height:26, borderRadius:'50%', background:G.sky, border:'none', fontSize:14, cursor:'pointer', fontWeight:700, color:G.blue }}>−</button>
+                <span style={{ fontSize:14, fontWeight:700, color:G.dark, minWidth:20, textAlign:'center' }}>{orderQty}</span>
+                <button onClick={() => setOrderQty(q => q+1)} style={{ width:26, height:26, borderRadius:'50%', background:G.sky, border:'none', fontSize:14, cursor:'pointer', fontWeight:700, color:G.blue }}>+</button>
+              </div>
+              <span style={{ fontSize:11, color:G.gray }}>× ₹{pendingOrder.price} each</span>
+            </div>
+            {/* Address */}
+            <input value={orderAddress} onChange={e => setOrderAddress(e.target.value)}
+              placeholder="Delivery address..." style={{ width:'100%', border:`1.5px solid ${G.sky}`, borderRadius:10, padding:'8px 10px', fontSize:12, outline:'none', fontFamily:'inherit', color:G.dark, marginBottom:10 }} />
+            {/* Payment method toggle */}
+            <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+              {[['cod','💵 Cash on Delivery'],['upi','📱 Pay via UPI']].map(([m,label]) => (
+                <button key={m} onClick={() => setPaymentMethod(m)} style={{
+                  flex:1, padding:'8px 6px', borderRadius:10, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit',
+                  border: paymentMethod===m ? `2px solid ${G.blue}` : '1.5px solid #e2e8f0',
+                  background: paymentMethod===m ? G.lb : 'white',
+                  color: paymentMethod===m ? G.blue : G.gray
+                }}>{label}</button>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => { setPendingOrder(null); setMsgs(m => [...m, { role:'assistant', content:'No problem! Order cancelled. Let me know if you need anything else 😊' }]); }}
+                style={{ flex:1, background:'#FEF2F2', color:G.red, border:'1px solid #FECACA', borderRadius:12, padding:'10px', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                ❌ Cancel
+              </button>
+              <button disabled={placingOrder || !orderAddress.trim()} onClick={async () => {
+                if (!orderAddress.trim()) { showToast('Please enter your delivery address'); return; }
+                setPlacingOrder(true);
+                try {
+                  // Step 1: Create the Buddy order
+                  const r = await fetch('/api/order', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({
+                      customerId: currentUser.id,
+                      shopId: pendingOrder.shop_id,
+                      productId: pendingOrder.product_id,
+                      quantity: orderQty,
+                      unitPrice: pendingOrder.price,
+                      deliveryAddress: orderAddress,
+                      paymentMethod
+                    })
+                  });
+                  const d = await r.json();
+                  if (!d.success) { showToast('❌ ' + (d.error || 'Order failed')); setPlacingOrder(false); return; }
+
+                  // Step 2: If UPI — open Razorpay checkout
+                  if (paymentMethod === 'upi') {
+                    const pr = await fetch('/api/payment', {
+                      method:'POST', headers:{'Content-Type':'application/json'},
+                      body: JSON.stringify({ amount: pendingOrder.price * orderQty, orderId: d.orderId, customerName: userProfile?.full_name||'', customerPhone: userProfile?.phone||'' })
+                    });
+                    const pd = await pr.json();
+
+                    if (pd.fallback) {
+                      // Razorpay not set up yet — continue as COD
+                      showToast('💵 UPI not ready yet, switched to Cash on Delivery');
+                    } else if (pd.razorpayOrderId) {
+                      // Open Razorpay checkout
+                      const options = {
+                        key: pd.keyId,
+                        amount: pd.amount,
+                        currency: pd.currency,
+                        order_id: pd.razorpayOrderId,
+                        name: 'Buddy AI',
+                        description: `Order #${d.orderCode}`,
+                        handler: async (response) => {
+                          await fetch('/api/payment-verify', {
+                            method:'POST', headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify({ ...response, buddyOrderId: d.orderId })
+                          });
+                          showToast('✅ Payment successful!');
+                        },
+                        prefill: { name: pd.customerName, contact: pd.customerPhone },
+                        theme: { color: '#2563EB' }
+                      };
+                      const rzp = new window.Razorpay(options);
+                      rzp.open();
+                    }
+                  }
+
+                  setPendingOrder(null);
+                  const payLabel = paymentMethod==='upi' ? '📱 UPI Payment' : '💵 Pay on Delivery';
+                  setMsgs(m => [...m, { role:'assistant', content:`${d.message} 🎉\n\n📍 Delivering to: ${orderAddress}\n${payLabel}\n\nTap 🛒 in the top bar to track your order!` }]);
+                  showToast('✅ Order placed!');
+                } catch(e) { showToast('❌ ' + e.message); }
+                setPlacingOrder(false);
+              }} style={{ flex:2, background:placingOrder?'#e2e8f0':`linear-gradient(135deg,#60A5FA,${G.blue})`, color:placingOrder?G.gray:'white', border:'none', borderRadius:12, padding:'10px', fontSize:12, fontWeight:700, cursor:placingOrder?'default':'pointer', fontFamily:'inherit' }}>
+                {placingOrder ? '⏳ Placing...' : `✅ ${paymentMethod==='upi'?'Pay':'Place'} ₹${(pendingOrder.price * orderQty).toFixed(0)}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Input */}
       <div style={{ flexShrink: 0, background: 'white', padding: '10px 12px 20px', display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid #e8f0fe' }}>
@@ -2109,6 +2236,7 @@ export default function Feed(){
         body{margin:0;padding:0;background:#F0F4FF;}
         .ns::-webkit-scrollbar{display:none;}.ns{scrollbar-width:none;}
       `}</style>
+      <InstallPrompt />
 
       <Toast msg={toast}/>
 
@@ -2173,6 +2301,19 @@ export default function Feed(){
             <div style={{fontSize:9,color:G.gray}}>Your AI Social Community</div>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
+            {profile?.role==='admin'&&(
+              <div onClick={()=>navigate('/admin')} style={{background:'#FEF9C3',borderRadius:18,padding:'5px 10px',fontSize:11,fontWeight:700,color:G.gold,cursor:'pointer',border:'1px solid #FDE68A'}}>⚙️</div>
+            )}
+            {/* Seller / Delivery / Customer shortcuts */}
+            {profile?.role==='seller'&&(
+              <div onClick={()=>navigate('/seller/dashboard')} style={{background:G.lb,borderRadius:18,padding:'5px 10px',fontSize:11,fontWeight:700,color:G.blue,cursor:'pointer',border:`1px solid ${G.sky}`}}>🏪</div>
+            )}
+            {profile?.role==='delivery'&&(
+              <div onClick={()=>navigate('/delivery/dashboard')} style={{background:'#FFF7ED',borderRadius:18,padding:'5px 10px',fontSize:11,fontWeight:700,color:'#EA580C',cursor:'pointer',border:'1px solid #FED7AA'}}>🛵</div>
+            )}
+            {(profile?.role==='customer'||!profile?.role)&&(
+              <div onClick={()=>navigate('/my-orders')} style={{background:G.lb,borderRadius:18,padding:'5px 10px',fontSize:11,fontWeight:700,color:G.blue,cursor:'pointer',border:`1px solid ${G.sky}`}}>🛒</div>
+            )}
             <div style={{position:'relative',cursor:'pointer'}} onClick={()=>setPanel('notifications')}>
               <span style={{fontSize:21}}>🔔</span>
               {unreadCount>0&&<div style={{position:'absolute',top:-4,right:-4,background:G.red,color:'white',fontSize:8,width:14,height:14,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>{unreadCount>9?'9+':unreadCount}</div>}
