@@ -2,15 +2,20 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './supabase';
 
-import Login        from './pages/Login';
-import Register     from './pages/Register';
-import Feed         from './pages/Feed';      // Feed IS the home now
-import Profile      from './pages/Profile';
-import ImageCreator from './pages/ImageCreator';
-import News         from './pages/News';
-import ErrorBoundary from './components/ErrorBoundary';
-
-// NO global BottomNav — Feed has its own built-in nav
+import Login           from './pages/Login';
+import Register        from './pages/Register';
+import Feed            from './pages/Feed';
+import Profile         from './pages/Profile';
+import ImageCreator    from './pages/ImageCreator';
+import News            from './pages/News';
+import SellerDashboard from './pages/SellerDashboard';
+import SellerProducts  from './pages/SellerProducts';
+import SellerRegister  from './pages/SellerRegister';
+import DeliveryDashboard from './pages/DeliveryDashboard';
+import OrderTracking   from './pages/OrderTracking';
+import MyOrders        from './pages/MyOrders';
+import AdminPanel      from './pages/AdminPanel';
+import ErrorBoundary   from './components/ErrorBoundary';
 
 function ProtectedRoute({ children }) {
   const [session, setSession] = useState(undefined);
@@ -41,21 +46,29 @@ export default function App() {
           <Route path="/login"    element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Feed IS home — /home and / both go to /feed */}
+          {/* Social feed (home) */}
           <Route path="/feed"  element={<ProtectedRoute><Feed /></ProtectedRoute>} />
           <Route path="/home"  element={<Navigate to="/feed" replace />} />
 
-          {/* Other pages */}
+          {/* Social pages */}
           <Route path="/profile"       element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/image-creator" element={<ProtectedRoute><ImageCreator /></ProtectedRoute>} />
           <Route path="/news"          element={<ProtectedRoute><News /></ProtectedRoute>} />
 
-          {/* Legacy routes → feed */}
+          {/* ── MARKETPLACE ROUTES ── */}
+          <Route path="/my-orders"          element={<ProtectedRoute><MyOrders /></ProtectedRoute>} />
+          <Route path="/admin"              element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
+          <Route path="/seller/register"  element={<ProtectedRoute><SellerRegister /></ProtectedRoute>} />
+          <Route path="/seller/dashboard" element={<ProtectedRoute><SellerDashboard /></ProtectedRoute>} />
+          <Route path="/seller/products"  element={<ProtectedRoute><SellerProducts /></ProtectedRoute>} />
+          <Route path="/delivery/dashboard" element={<ProtectedRoute><DeliveryDashboard /></ProtectedRoute>} />
+          <Route path="/order/:id"        element={<ProtectedRoute><OrderTracking /></ProtectedRoute>} />
+
+          {/* Legacy redirects */}
           <Route path="/ai-chat" element={<Navigate to="/feed" replace />} />
           <Route path="/chat"    element={<Navigate to="/feed" replace />} />
           <Route path="/chat/*"  element={<Navigate to="/feed" replace />} />
-
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*"        element={<Navigate to="/login" replace />} />
         </Routes>
       </Router>
     </ErrorBoundary>
