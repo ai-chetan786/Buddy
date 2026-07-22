@@ -12,9 +12,11 @@ import SellerDashboard from './pages/SellerDashboard';
 import SellerProducts  from './pages/SellerProducts';
 import SellerRegister  from './pages/SellerRegister';
 import DeliveryDashboard from './pages/DeliveryDashboard';
+import DeliveryRegister  from './pages/DeliveryRegister';
 import OrderTracking   from './pages/OrderTracking';
 import MyOrders        from './pages/MyOrders';
 import AdminPanel      from './pages/AdminPanel';
+import Browse          from './pages/Browse';
 import ErrorBoundary   from './components/ErrorBoundary';
 
 function ProtectedRoute({ children }) {
@@ -56,9 +58,11 @@ export default function App() {
           <Route path="/news"          element={<ProtectedRoute><News /></ProtectedRoute>} />
 
           {/* ── MARKETPLACE ROUTES ── */}
-          <Route path="/my-orders"          element={<ProtectedRoute><MyOrders /></ProtectedRoute>} />
-          <Route path="/admin"              element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
-          <Route path="/seller/register"  element={<ProtectedRoute><SellerRegister /></ProtectedRoute>} />
+          <Route path="/my-orders"            element={<ProtectedRoute><MyOrders /></ProtectedRoute>} />
+          <Route path="/admin"                element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
+          <Route path="/browse"               element={<ProtectedRoute><Browse /></ProtectedRoute>} />
+          <Route path="/seller/register"      element={<ProtectedRoute><SellerRegister /></ProtectedRoute>} />
+          <Route path="/delivery/register"    element={<ProtectedRoute><DeliveryRegister /></ProtectedRoute>} />
           <Route path="/seller/dashboard" element={<ProtectedRoute><SellerDashboard /></ProtectedRoute>} />
           <Route path="/seller/products"  element={<ProtectedRoute><SellerProducts /></ProtectedRoute>} />
           <Route path="/delivery/dashboard" element={<ProtectedRoute><DeliveryDashboard /></ProtectedRoute>} />
