@@ -43,7 +43,7 @@ export default function Register() {
         avatar_url: ''
       });
     }
-    setSuccess('✅ Account created! Check your email to verify, then login.');
+    setSuccess(`✅ Account created as ${ROLES.find(r=>r.id===role)?.label}! Check your email to verify, then login.`);
     setLoading(false);
   };
 
@@ -101,7 +101,14 @@ export default function Register() {
         </p>
 
         {error && <div className="auth-error-new">⚠️ {error}</div>}
-        {success && <div className="auth-success-new">{success}</div>}
+        {success && (
+          <div className="auth-success-new">
+            <div style={{ fontWeight:700, marginBottom:8 }}>{success}</div>
+            {role==='seller' && <div style={{ fontSize:12, color:'#166534' }}>📧 After verifying your email → Login → Tap 🏪 → Register your shop and add products</div>}
+            {role==='delivery' && <div style={{ fontSize:12, color:'#166534' }}>📧 After verifying your email → Login → Tap 🛵 → Complete your delivery partner profile with vehicle details</div>}
+            {role==='customer' && <div style={{ fontSize:12, color:'#166534' }}>📧 After verifying your email → Login → Tap 🍽️ to browse shops or 🤖 to order via AI chat</div>}
+          </div>
+        )}
 
         {!success && (
           <form onSubmit={handleRegister} className="auth-form-new">
