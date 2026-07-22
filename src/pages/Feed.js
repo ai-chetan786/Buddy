@@ -2311,9 +2311,10 @@ export default function Feed(){
             {profile?.role==='delivery'&&(
               <div onClick={()=>navigate('/delivery/dashboard')} style={{background:'#FFF7ED',borderRadius:18,padding:'5px 10px',fontSize:11,fontWeight:700,color:'#EA580C',cursor:'pointer',border:'1px solid #FED7AA'}}>🛵</div>
             )}
-            {(profile?.role==='customer'||!profile?.role)&&(
+            {(profile?.role==='customer'||!profile?.role)&&(<>
+              <div onClick={()=>navigate('/browse')} style={{background:'#FFF7ED',borderRadius:18,padding:'5px 10px',fontSize:11,fontWeight:700,color:G.orange,cursor:'pointer',border:'1px solid #FED7AA'}}>🍽️</div>
               <div onClick={()=>navigate('/my-orders')} style={{background:G.lb,borderRadius:18,padding:'5px 10px',fontSize:11,fontWeight:700,color:G.blue,cursor:'pointer',border:`1px solid ${G.sky}`}}>🛒</div>
-            )}
+            </>)}
             <div style={{position:'relative',cursor:'pointer'}} onClick={()=>setPanel('notifications')}>
               <span style={{fontSize:21}}>🔔</span>
               {unreadCount>0&&<div style={{position:'absolute',top:-4,right:-4,background:G.red,color:'white',fontSize:8,width:14,height:14,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>{unreadCount>9?'9+':unreadCount}</div>}
